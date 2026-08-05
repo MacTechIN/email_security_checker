@@ -29,6 +29,7 @@ docker compose --env-file .env up -d postgres
 - `GET /healthz`: 서버 상태
 - `POST /api/v1/agent/heartbeat`: Agent 장치 상태 등록·갱신 (`tenantId` 필요)
 - `GET /api/v1/agents/{tenant_id}/{device_id}`: 장치 상태 확인
+- `GET /api/v1/agents/{tenant_id}/{device_id}/policy`: 장치 정책 조회
 
 `DATABASE_URL`이 없으면 장치 상태는 개발 편의를 위해 메모리에 저장되고, 설정되어 있으면 PostgreSQL에 저장됩니다. 상용 스키마는 `migrations/001_devices.sql`에 정의되어 있습니다.
 
@@ -38,3 +39,4 @@ docker compose --env-file .env up -d postgres
 - `agent_audit_events`에 heartbeat와 장치 상태 변경을 감사 이벤트로 저장합니다.
 - 모든 쿼리에 `tenant_id`를 적용하고 PostgreSQL RLS를 활성화합니다.
 - 장치 인증서 또는 요청 서명, rate limit, 만료 장치 정리 작업을 추가합니다.
+- 정책 응답은 상용 환경에서 서명 검증과 PostgreSQL 버전 관리 후 적용해야 합니다.

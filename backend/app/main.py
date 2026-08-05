@@ -20,6 +20,16 @@ class DeviceState(HeartbeatRequest):
     lastSeenAtUtc: datetime
 
 
+class PolicyResponse(BaseModel):
+    tenantId: UUID
+    deviceId: str
+    version: int = 1
+    mode: str = "monitor"
+    protectedExtensions: list[str] = []
+    externalRecipientWarning: bool = True
+    piiDetection: bool = True
+
+
 from .storage import DeviceStore
 
 device_store = DeviceStore()
@@ -37,9 +47,14 @@ def agent_heartbeat(payload: HeartbeatRequest) -> DeviceState:
     return DeviceState.model_validate(device_store.upsert(state))
 
 
-@app.get("/api/v1/agents/{device_id}", response_model=DeviceState)
+@app.get("/api/v1/agents/{tenant_id}/{device_id}", response_model=DeviceState)
 def get_agent(tenant_id: UUID, device_id: str) -> DeviceState:
     state = device_store.get(tenant_id, device_id)
     if state is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="device not found")
     return state
+
+
+@app.get("/api/v1/agents/{tenant_id}/{device_id}/policy", response_model=PolicyResponse)
+def get_policy(tenant_id: UUID, device_id: str) -> PolicyResponse:
+    return PolicyResponse(tenantId=tenant_id, deviceId=device_id)

@@ -17,6 +17,9 @@ public sealed class AgentWorker(ILogger<AgentWorker> logger, AgentOptions option
                 // IMAP IDLE, Outlook events, DLP and file provenance are separate modules.
                 logger.LogDebug("Agent heartbeat at {Time}", DateTimeOffset.UtcNow);
                 await controlPlaneClient.SendHeartbeatAsync(options.TenantId, options.DeviceId, stoppingToken);
+                var policy = await controlPlaneClient.FetchPolicyAsync(options.TenantId, options.DeviceId, stoppingToken);
+                if (policy is not null)
+                    logger.LogDebug("Policy version {Version} loaded in {Mode} mode", policy.Version, policy.Mode);
                 await Task.Delay(TimeSpan.FromSeconds(options.HeartbeatSeconds), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
