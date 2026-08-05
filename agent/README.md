@@ -19,7 +19,7 @@ dotnet restore
 dotnet build -c Release
 ```
 
-현재 개발 환경에는 `dotnet` SDK가 없어 빌드 검증은 보류되어 있습니다.
+현재 개발 환경에는 사용자 영역에 .NET 8 SDK를 설치해 빌드 검증을 완료했습니다.
 
 ## 다음 구현 순서
 
@@ -29,3 +29,7 @@ dotnet build -c Release
 4. Python 프로토타입에서 추출한 IMAP IDLE 커넥터
 5. DLP·파일 출처 추적 이벤트 버스
 6. 서명된 MSI/MSIX 설치 및 Windows Service 복구 정책
+
+## Heartbeat
+
+에이전트는 `ControlPlaneUrl`의 `/api/v1/agent/heartbeat`로 장치 ID, 에이전트 버전, 운영체제와 상태를 보고합니다. 서버가 중단되어도 로컬 감시를 계속합니다. 운영 환경에서는 설치·등록 과정에서 발급한 DeviceId와 장치 인증서·요청 서명을 사용해야 합니다.

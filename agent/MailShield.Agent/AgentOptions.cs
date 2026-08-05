@@ -5,6 +5,7 @@ public sealed class AgentOptions
     public const string SectionName = "MailShield";
 
     public string ControlPlaneUrl { get; set; } = "";
+    public string DeviceId { get; set; } = "";
     public int HeartbeatSeconds { get; set; } = 30;
     public int PolicyRefreshSeconds { get; set; } = 300;
 
@@ -15,6 +16,9 @@ public sealed class AgentOptions
         {
             throw new InvalidOperationException("MailShield:ControlPlaneUrl은 유효한 HTTP(S) URL이어야 합니다.");
         }
+
+        if (string.IsNullOrWhiteSpace(DeviceId) || DeviceId.Length > 128)
+            throw new InvalidOperationException("MailShield:DeviceId는 1~128자의 값이어야 합니다.");
 
         if (HeartbeatSeconds is < 5 or > 3600)
         {

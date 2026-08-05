@@ -19,6 +19,12 @@ builder.Services.AddSingleton(sp =>
     options.Validate();
     return options;
 });
+builder.Services.AddHttpClient<ControlPlaneClient>((serviceProvider, client) =>
+{
+    var options = serviceProvider.GetRequiredService<AgentOptions>();
+    client.BaseAddress = new Uri(options.ControlPlaneUrl);
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
 builder.Services.AddHostedService<AgentWorker>();
 
 await builder.Build().RunAsync();
