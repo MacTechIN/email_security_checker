@@ -1,0 +1,12 @@
+# Python cache and local tooling artifacts
+__pycache__/
+*.py[cod]
+
+# Local secrets and environment files
+.env
+.env.*
+
+# Build and test outputs
+.pytest_cache/
+dist/
+build/
