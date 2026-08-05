@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Dict
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
@@ -8,6 +8,7 @@ app = FastAPI(title="MailShield Control Plane", version="0.1.0")
 
 
 class HeartbeatRequest(BaseModel):
+    tenantId: UUID
     deviceId: str = Field(min_length=1, max_length=128)
     agentVersion: str = Field(min_length=1, max_length=64)
     operatingSystem: str = Field(min_length=1, max_length=256)
@@ -19,8 +20,9 @@ class DeviceState(HeartbeatRequest):
     lastSeenAtUtc: datetime
 
 
-# 개발용 저장소. 상용 버전에서는 PostgreSQL 장치 테이블로 교체한다.
-device_states: Dict[str, DeviceState] = {}
+from .storage import DeviceStore
+
+device_store = DeviceStore()
 
 
 @app.get("/healthz")
@@ -31,14 +33,13 @@ def healthz() -> dict[str, str]:
 @app.post("/api/v1/agent/heartbeat", response_model=DeviceState)
 def agent_heartbeat(payload: HeartbeatRequest) -> DeviceState:
     now = datetime.now(timezone.utc)
-    state = DeviceState(**payload.model_dump(), lastSeenAtUtc=now)
-    device_states[payload.deviceId] = state
-    return state
+    state = {**payload.model_dump(), "lastSeenAtUtc": now}
+    return DeviceState.model_validate(device_store.upsert(state))
 
 
 @app.get("/api/v1/agents/{device_id}", response_model=DeviceState)
-def get_agent(device_id: str) -> DeviceState:
-    state = device_states.get(device_id)
+def get_agent(tenant_id: UUID, device_id: str) -> DeviceState:
+    state = device_store.get(tenant_id, device_id)
     if state is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="device not found")
     return state

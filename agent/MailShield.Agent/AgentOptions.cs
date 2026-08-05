@@ -6,6 +6,7 @@ public sealed class AgentOptions
 
     public string ControlPlaneUrl { get; set; } = "";
     public string DeviceId { get; set; } = "";
+    public string TenantId { get; set; } = "";
     public int HeartbeatSeconds { get; set; } = 30;
     public int PolicyRefreshSeconds { get; set; } = 300;
 
@@ -19,6 +20,9 @@ public sealed class AgentOptions
 
         if (string.IsNullOrWhiteSpace(DeviceId) || DeviceId.Length > 128)
             throw new InvalidOperationException("MailShield:DeviceId는 1~128자의 값이어야 합니다.");
+
+        if (!Guid.TryParse(TenantId, out _))
+            throw new InvalidOperationException("MailShield:TenantId는 GUID여야 합니다.");
 
         if (HeartbeatSeconds is < 5 or > 3600)
         {

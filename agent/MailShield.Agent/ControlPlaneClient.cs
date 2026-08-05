@@ -6,9 +6,9 @@ namespace MailShield.Agent;
 
 public sealed class ControlPlaneClient(HttpClient httpClient, ILogger<ControlPlaneClient> logger)
 {
-    public async Task SendHeartbeatAsync(string deviceId, CancellationToken cancellationToken)
+    public async Task SendHeartbeatAsync(string tenantId, string deviceId, CancellationToken cancellationToken)
     {
-        var payload = new { deviceId, agentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0", operatingSystem = Environment.OSVersion.VersionString, status = "online", reportedAtUtc = DateTimeOffset.UtcNow };
+        var payload = new { tenantId, deviceId, agentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0", operatingSystem = Environment.OSVersion.VersionString, status = "online", reportedAtUtc = DateTimeOffset.UtcNow };
         try
         {
             using var response = await httpClient.PostAsJsonAsync("/api/v1/agent/heartbeat", payload, cancellationToken);
