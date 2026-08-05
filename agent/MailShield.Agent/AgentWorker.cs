@@ -3,11 +3,12 @@ using Microsoft.Extensions.Logging;
 
 namespace MailShield.Agent;
 
-public sealed class AgentWorker(ILogger<AgentWorker> logger, AgentOptions options, ControlPlaneClient controlPlaneClient, PolicyStore policyStore) : BackgroundService
+public sealed class AgentWorker(ILogger<AgentWorker> logger, ILoggerFactory loggerFactory, AgentOptions options, ControlPlaneClient controlPlaneClient, PolicyStore policyStore, MailEventPipeline pipeline) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("MailShield Agent starting at {Time}", DateTimeOffset.UtcNow);
+        var watcherTasks = StartImapWatchers(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -41,5 +42,34 @@ public sealed class AgentWorker(ILogger<AgentWorker> logger, AgentOptions option
         }
 
         logger.LogInformation("MailShield Agent stopped at {Time}", DateTimeOffset.UtcNow);
+        if (watcherTasks.Count > 0)
+            await Task.WhenAll(watcherTasks);
+    }
+
+    private List<Task> StartImapWatchers(CancellationToken stoppingToken)
+    {
+        var appPassword = Environment.GetEnvironmentVariable("MAILSHIELD_IMAP_APP_PASSWORD");
+        if (string.IsNullOrWhiteSpace(options.ImapHost) || string.IsNullOrWhiteSpace(options.MailAddress) || string.IsNullOrWhiteSpace(appPassword))
+        {
+            logger.LogInformation("IMAP 감시 설정이 없어 heartbeat 모드로 실행합니다.");
+            return [];
+        }
+
+        var tasks = new List<Task>();
+        foreach (var folder in options.ImapFolders.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var source = new ImapIdleSource(options.ImapHost, options.ImapPort, options.MailAddress, appPassword, folder, loggerFactory.CreateLogger<ImapIdleSource>());
+            tasks.Add(Task.Run(async () =>
+            {
+                await foreach (var mail in source.ReadEventsAsync(stoppingToken))
+                {
+                    var policy = policyStore.Load();
+                    if (policy is not null)
+                        pipeline.Evaluate(mail, policy);
+                }
+            }, stoppingToken));
+        }
+        logger.LogInformation("IMAP IDLE 감시 시작: {Folders}", options.ImapFolders);
+        return tasks;
     }
 }

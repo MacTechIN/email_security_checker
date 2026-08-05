@@ -9,6 +9,10 @@ public sealed class AgentOptions
     public string TenantId { get; set; } = "";
     public int HeartbeatSeconds { get; set; } = 30;
     public int PolicyRefreshSeconds { get; set; } = 300;
+    public string ImapHost { get; set; } = "";
+    public int ImapPort { get; set; } = 993;
+    public string MailAddress { get; set; } = "";
+    public string ImapFolders { get; set; } = "INBOX,Sent";
 
     public void Validate()
     {
@@ -33,5 +37,8 @@ public sealed class AgentOptions
         {
             throw new InvalidOperationException("MailShield:PolicyRefreshSeconds는 30~86400초여야 합니다.");
         }
+
+        if (ImapPort is < 1 or > 65535)
+            throw new InvalidOperationException("MailShield:ImapPort는 1~65535여야 합니다.");
     }
 }

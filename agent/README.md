@@ -41,3 +41,5 @@ dotnet build -c Release
 `MailEventPipeline`은 IMAP IDLE 또는 공급자 API 커넥터가 전달한 `MailEvent`를 DLP 정책으로 평가해 `MailSecurityIncident`로 변환합니다. 커넥터는 폴더별 독립 연결, UID 체크포인트, IDLE 갱신과 재연결을 구현하고 이 파이프라인에 이벤트를 전달해야 합니다.
 
 `ImapIdleSource`는 MailKit 기반의 연결 구현입니다. `INBOX`와 `Sent`에 인스턴스를 각각 만들고 `ReadEventsAsync()`를 별도 작업으로 실행해야 합니다. 운영 환경에서는 앱 비밀번호를 설정 파일에 저장하지 말고 Windows Credential Manager·DPAPI에서 읽어야 하며, UID 체크포인트를 `lastUid` 메모리 변수보다 영속 저장소로 교체해야 합니다.
+
+Agent Worker는 `MailShield:ImapHost`, `MailShield:MailAddress`, `MailShield:ImapFolders`와 `MAILSHIELD_IMAP_APP_PASSWORD`가 모두 있을 때만 IMAP 감시를 시작합니다. 설정이 없으면 heartbeat 전용 모드로 실행합니다. 운영 배포에서는 앱 비밀번호를 Windows Credential Manager 또는 DPAPI 저장소에서 읽도록 교체해야 합니다.
