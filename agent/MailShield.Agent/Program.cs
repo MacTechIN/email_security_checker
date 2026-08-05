@@ -27,5 +27,6 @@ builder.Services.AddHttpClient<ControlPlaneClient>((serviceProvider, client) =>
 });
 builder.Services.AddHostedService<AgentWorker>();
 builder.Services.AddSingleton<PolicyStore>();
+builder.Services.AddSingleton<DlpScanner>();
 
 await builder.Build().RunAsync();
