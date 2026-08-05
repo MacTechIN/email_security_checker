@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using MailShield.Agent;
 
 var builder = Host.CreateApplicationBuilder(args);
 
