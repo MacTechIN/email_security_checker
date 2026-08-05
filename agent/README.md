@@ -37,3 +37,5 @@ dotnet build -c Release
 정책은 Windows DPAPI(CurrentUser)로 암호화된 `LocalApplicationData\MailShield\policy.bin`에 저장됩니다. 서버 연결 실패 시 마지막으로 저장된 정책을 사용하며, 사용자·장치가 바뀌면 DPAPI 복호화가 실패해 정책을 적용하지 않습니다.
 
 `DlpScanner`는 정책의 개인정보 탐지·보호 확장자 목록을 사용해 제목, 본문과 첨부파일 메타데이터를 평가합니다. 카드·계좌번호는 상용 단계에서 체크섬·문맥 검증을 추가해야 하며, 현재 모듈은 커넥터 연결 전의 정책 적용 지점입니다.
+
+`MailEventPipeline`은 IMAP IDLE 또는 공급자 API 커넥터가 전달한 `MailEvent`를 DLP 정책으로 평가해 `MailSecurityIncident`로 변환합니다. 커넥터는 폴더별 독립 연결, UID 체크포인트, IDLE 갱신과 재연결을 구현하고 이 파이프라인에 이벤트를 전달해야 합니다.
