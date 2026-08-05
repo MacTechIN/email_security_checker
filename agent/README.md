@@ -1,0 +1,31 @@
+# MailShield.Agent
+
+상용 MailShield Windows Service의 초기 스캐폴드입니다.
+
+## 책임
+
+- Windows 로그인·시작 시 자동 실행
+- Agent 상태 heartbeat와 구조화 로그
+- 정책 동기화 및 공급자별 메일 감시 모듈의 호스트
+- IMAP IDLE, Outlook 이벤트, DLP, 파일 출처 추적 모듈의 수명주기 관리
+- 장애 발생 시 서비스 프로세스 유지와 모듈별 재시작 기반 제공
+
+## 빌드
+
+Windows에 .NET 8 SDK를 설치한 뒤 실행합니다.
+
+```powershell
+dotnet restore
+dotnet build -c Release
+```
+
+현재 개발 환경에는 `dotnet` SDK가 없어 빌드 검증은 보류되어 있습니다.
+
+## 다음 구현 순서
+
+1. `AgentOptions`와 환경변수·DPAPI 기반 설정 로더
+2. 장치 등록·heartbeat API 클라이언트
+3. 암호화된 정책 캐시와 오프라인 큐
+4. Python 프로토타입에서 추출한 IMAP IDLE 커넥터
+5. DLP·파일 출처 추적 이벤트 버스
+6. 서명된 MSI/MSIX 설치 및 Windows Service 복구 정책
