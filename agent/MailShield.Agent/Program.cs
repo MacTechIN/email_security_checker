@@ -26,5 +26,6 @@ builder.Services.AddHttpClient<ControlPlaneClient>((serviceProvider, client) =>
     client.Timeout = TimeSpan.FromSeconds(15);
 });
 builder.Services.AddHostedService<AgentWorker>();
+builder.Services.AddSingleton<PolicyStore>();
 
 await builder.Build().RunAsync();

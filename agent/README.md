@@ -33,3 +33,5 @@ dotnet build -c Release
 ## Heartbeat
 
 에이전트는 `ControlPlaneUrl`의 `/api/v1/agent/heartbeat`로 장치 ID, 에이전트 버전, 운영체제와 상태를 보고합니다. 서버가 중단되어도 로컬 감시를 계속합니다. 운영 환경에서는 설치·등록 과정에서 발급한 DeviceId와 장치 인증서·요청 서명을 사용해야 합니다.
+
+정책은 Windows DPAPI(CurrentUser)로 암호화된 `LocalApplicationData\MailShield\policy.bin`에 저장됩니다. 서버 연결 실패 시 마지막으로 저장된 정책을 사용하며, 사용자·장치가 바뀌면 DPAPI 복호화가 실패해 정책을 적용하지 않습니다.

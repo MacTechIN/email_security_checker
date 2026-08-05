@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace MailShield.Agent;
 
-public sealed class AgentWorker(ILogger<AgentWorker> logger, AgentOptions options, ControlPlaneClient controlPlaneClient) : BackgroundService
+public sealed class AgentWorker(ILogger<AgentWorker> logger, AgentOptions options, ControlPlaneClient controlPlaneClient, PolicyStore policyStore) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -19,7 +19,14 @@ public sealed class AgentWorker(ILogger<AgentWorker> logger, AgentOptions option
                 await controlPlaneClient.SendHeartbeatAsync(options.TenantId, options.DeviceId, stoppingToken);
                 var policy = await controlPlaneClient.FetchPolicyAsync(options.TenantId, options.DeviceId, stoppingToken);
                 if (policy is not null)
+                {
+                    policyStore.Save(policy);
                     logger.LogDebug("Policy version {Version} loaded in {Mode} mode", policy.Version, policy.Mode);
+                }
+                else if (policyStore.Load() is { } cachedPolicy)
+                {
+                    logger.LogDebug("Using cached policy version {Version} in {Mode} mode", cachedPolicy.Version, cachedPolicy.Mode);
+                }
                 await Task.Delay(TimeSpan.FromSeconds(options.HeartbeatSeconds), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
