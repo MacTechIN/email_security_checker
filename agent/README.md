@@ -43,3 +43,5 @@ dotnet build -c Release
 `ImapIdleSource`는 MailKit 기반의 연결 구현입니다. `INBOX`와 `Sent`에 인스턴스를 각각 만들고 `ReadEventsAsync()`를 별도 작업으로 실행해야 합니다. 운영 환경에서는 앱 비밀번호를 설정 파일에 저장하지 말고 Windows Credential Manager·DPAPI에서 읽어야 하며, UID 체크포인트를 `lastUid` 메모리 변수보다 영속 저장소로 교체해야 합니다.
 
 Agent Worker는 `MailShield:ImapHost`, `MailShield:MailAddress`, `MailShield:ImapFolders`와 `MAILSHIELD_IMAP_APP_PASSWORD`가 모두 있을 때만 IMAP 감시를 시작합니다. 설정이 없으면 heartbeat 전용 모드로 실행합니다. 운영 배포에서는 앱 비밀번호를 Windows Credential Manager 또는 DPAPI 저장소에서 읽도록 교체해야 합니다.
+
+IMAP 입력은 CRLF 제거, 제목·발신자 길이 제한, 본문 1MB 제한과 첨부파일 25MB 제한을 적용합니다. NuGet의 MailKit/MimeKit 보안 권고는 패키지 공급자가 수정 버전을 제공하는 즉시 재검증하고 업데이트해야 하며, 현재 빌드는 상용 출시 전 보안 검토가 필요합니다.

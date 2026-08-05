@@ -14,6 +14,8 @@ public sealed class ImapIdleSource(
     string folderName,
     ILogger<ImapIdleSource> logger) : IMailEventSource
 {
+    private const int MaxBodyCharacters = 1_000_000;
+    private const long MaxAttachmentBytes = 25 * 1024 * 1024;
     public async IAsyncEnumerable<MailEvent> ReadEventsAsync(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -71,11 +73,16 @@ public sealed class ImapIdleSource(
 
     private static MailEvent ToMailEvent(MimeMessage message, string folder, uint uid)
     {
-        var body = message.TextBody ?? message.HtmlBody ?? string.Empty;
+        var body = (message.TextBody ?? message.HtmlBody ?? string.Empty).Replace("\r", " ").Replace("\n", " ");
+        if (body.Length > MaxBodyCharacters)
+            body = body[..MaxBodyCharacters];
         var attachments = message.Attachments
             .OfType<MimePart>()
-            .Select(part => new MailAttachment(part.FileName, part.Content.Stream?.Length ?? 0))
+            .Where(part => (part.Content.Stream?.Length ?? 0) <= MaxAttachmentBytes)
+            .Select(part => new MailAttachment(Sanitize(part.FileName), part.Content.Stream?.Length ?? 0))
             .ToArray();
-        return new MailEvent(folder, uid, message.Subject ?? string.Empty, message.From.ToString(), body, attachments, message.Date);
+        return new MailEvent(folder, uid, Sanitize(message.Subject), Sanitize(message.From.ToString()), body, attachments, message.Date);
     }
+
+    private static string Sanitize(string? value) => (value ?? string.Empty).Replace("\r", " ").Replace("\n", " ")[..Math.Min((value ?? string.Empty).Length, 4096)];
 }
