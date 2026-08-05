@@ -5,6 +5,7 @@
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\Publish-MailShieldAgent.ps1
+.\Verify-MailShieldPackage.ps1
 .\Install-MailShieldAgent.ps1
 ```
 
