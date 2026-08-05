@@ -5,6 +5,7 @@ public sealed class AgentOptions
     public const string SectionName = "MailShield";
 
     public string ControlPlaneUrl { get; set; } = "";
+    public string ControlPlaneApiKey { get; set; } = "";
     public string DeviceId { get; set; } = "";
     public string TenantId { get; set; } = "";
     public int HeartbeatSeconds { get; set; } = 30;

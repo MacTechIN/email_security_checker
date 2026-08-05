@@ -23,6 +23,8 @@ builder.Services.AddHttpClient<ControlPlaneClient>((serviceProvider, client) =>
 {
     var options = serviceProvider.GetRequiredService<AgentOptions>();
     client.BaseAddress = new Uri(options.ControlPlaneUrl);
+    if (!string.IsNullOrWhiteSpace(options.ControlPlaneApiKey))
+        client.DefaultRequestHeaders.Add("X-MailShield-Agent-Key", options.ControlPlaneApiKey);
     client.Timeout = TimeSpan.FromSeconds(15);
 });
 builder.Services.AddHostedService<AgentWorker>();

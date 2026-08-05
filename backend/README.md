@@ -33,6 +33,8 @@ docker compose --env-file .env up -d postgres
 
 `DATABASE_URL`이 없으면 장치 상태는 개발 편의를 위해 메모리에 저장되고, 설정되어 있으면 PostgreSQL에 저장됩니다. 상용 스키마는 `migrations/001_devices.sql`에 정의되어 있습니다.
 
+`MAILSHIELD_AGENT_API_KEY`를 설정하면 heartbeat, 장치 조회와 정책 API가 `X-MailShield-Agent-Key` 헤더를 요구합니다. 개발 편의상 키가 비어 있으면 인증을 생략하지만 운영 환경에서는 반드시 길고 무작위인 비밀값을 설정해야 합니다.
+
 상용 전환 시:
 
 - `agent_devices`에 `tenant_id + device_id`를 기준으로 장치 상태를 저장합니다.
