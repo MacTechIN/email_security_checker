@@ -67,6 +67,26 @@
 - 운영 배포에서는 `.pyw` 단독 실행 대신 Windows Service가 감시 작업자를 관리한다. 서비스는 자동 시작, 예외 복구, 중복 실행 방지, 정책 동기화와 보안 로그 필터링을 담당한다.
 - 백그라운드 감시는 RAM에 상주하지만 메일 원문을 계속 보관하지 않는다. 새 이벤트를 처리한 뒤 원문과 첨부파일은 정책상 필요한 경우를 제외하고 폐기한다.
 
+## 추가된 실시간 감시 프로토타입
+
+- 파일: `realtime_email_monitor.pyw`
+- 의존성: `requirements-realtime.txt`
+- 설정: `MAILSHIELD_EMAIL`, `MAILSHIELD_IMAP_HOST`, `MAILSHIELD_IMAP_PORT`, `MAILSHIELD_APP_PASSWORD`, `MAILSHIELD_FOLDERS`
+- 동작: 폴더별 독립 IMAP 연결, IDLE 대기, UID 증분 조회, 재연결 백오프, 기본 개인정보·위험 첨부파일 후보 탐지, Windows Toast 알림
+
+개발 테스트 예시:
+
+```powershell
+$env:MAILSHIELD_EMAIL = "user@example.com"
+$env:MAILSHIELD_IMAP_HOST = "imap.example.com"
+$env:MAILSHIELD_IMAP_PORT = "993"
+$env:MAILSHIELD_APP_PASSWORD = "앱 비밀번호"
+$env:MAILSHIELD_FOLDERS = "INBOX,Sent"
+pythonw .\realtime_email_monitor.pyw
+```
+
+이 프로토타입은 공급자 자동 탐지, OAuth, UIDVALIDITY 영속 체크포인트, 등록 프로그램 파일 출처 연계, 정교한 카드·계좌번호 검증, 악성코드 샌드박스를 아직 포함하지 않는다. 운영 배포 전에는 Windows Service 래퍼와 조직 정책 서버를 연결해야 한다.
+
 ## 우선 개선 순서
 
 1. 서버 하드코딩을 제거하고 자동 탐지 결과를 입력받는 커넥터로 전환한다.
