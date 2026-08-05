@@ -12,6 +12,13 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 127.0.0.1 --port 8443 --reload
 ```
 
+테스트 실행:
+
+```powershell
+pip install -r requirements-dev.txt
+pytest -q
+```
+
 ## PostgreSQL 개발 환경
 
 `.env.example`을 참고해 로컬 `.env`를 만들고 강한 개발용 비밀번호를 설정한 뒤 실행합니다.
