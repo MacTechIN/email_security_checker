@@ -12,6 +12,16 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 127.0.0.1 --port 8443 --reload
 ```
 
+## PostgreSQL 개발 환경
+
+`.env.example`을 참고해 로컬 `.env`를 만들고 강한 개발용 비밀번호를 설정한 뒤 실행합니다.
+
+```powershell
+docker compose --env-file .env up -d postgres
+```
+
+마이그레이션은 컨테이너 최초 생성 시 `migrations/`에서 자동 적용됩니다. 개발용 컨테이너를 완전히 초기화할 때는 데이터 볼륨 삭제가 필요하므로 운영 데이터에는 사용하지 않습니다.
+
 개발용 `appsettings.json`의 `ControlPlaneUrl`을 `http://127.0.0.1:8443`으로 설정하면 Windows Agent가 heartbeat를 전송할 수 있습니다.
 
 ## API
