@@ -1,0 +1,29 @@
+namespace MailShield.Agent;
+
+public sealed class AgentOptions
+{
+    public const string SectionName = "MailShield";
+
+    public string ControlPlaneUrl { get; set; } = "";
+    public int HeartbeatSeconds { get; set; } = 30;
+    public int PolicyRefreshSeconds { get; set; } = 300;
+
+    public void Validate()
+    {
+        if (!Uri.TryCreate(ControlPlaneUrl, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("https" or "http"))
+        {
+            throw new InvalidOperationException("MailShield:ControlPlaneUrl은 유효한 HTTP(S) URL이어야 합니다.");
+        }
+
+        if (HeartbeatSeconds is < 5 or > 3600)
+        {
+            throw new InvalidOperationException("MailShield:HeartbeatSeconds는 5~3600초여야 합니다.");
+        }
+
+        if (PolicyRefreshSeconds is < 30 or > 86400)
+        {
+            throw new InvalidOperationException("MailShield:PolicyRefreshSeconds는 30~86400초여야 합니다.");
+        }
+    }
+}

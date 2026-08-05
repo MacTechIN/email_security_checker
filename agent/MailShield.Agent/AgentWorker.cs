@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace MailShield.Agent;
 
-public sealed class AgentWorker(ILogger<AgentWorker> logger) : BackgroundService
+public sealed class AgentWorker(ILogger<AgentWorker> logger, AgentOptions options) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -16,7 +16,7 @@ public sealed class AgentWorker(ILogger<AgentWorker> logger) : BackgroundService
                 // TODO: load encrypted policy and start provider-specific watchers.
                 // IMAP IDLE, Outlook events, DLP and file provenance are separate modules.
                 logger.LogDebug("Agent heartbeat at {Time}", DateTimeOffset.UtcNow);
-                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(options.HeartbeatSeconds), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
