@@ -1,0 +1,38 @@
+name: MailShield CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run API tests
+        run: pytest -q
+
+  agent:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore agent/MailShield.Agent/MailShield.Agent.csproj
+      - name: Build
+        run: dotnet build agent/MailShield.Agent/MailShield.Agent.csproj -c Release --no-restore
+      - name: NuGet vulnerability report
+        continue-on-error: true
+        run: dotnet list agent/MailShield.Agent/MailShield.Agent.csproj package --vulnerable --include-transitive
