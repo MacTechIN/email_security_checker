@@ -39,3 +39,5 @@ dotnet build -c Release
 `DlpScanner`는 정책의 개인정보 탐지·보호 확장자 목록을 사용해 제목, 본문과 첨부파일 메타데이터를 평가합니다. 카드·계좌번호는 상용 단계에서 체크섬·문맥 검증을 추가해야 하며, 현재 모듈은 커넥터 연결 전의 정책 적용 지점입니다.
 
 `MailEventPipeline`은 IMAP IDLE 또는 공급자 API 커넥터가 전달한 `MailEvent`를 DLP 정책으로 평가해 `MailSecurityIncident`로 변환합니다. 커넥터는 폴더별 독립 연결, UID 체크포인트, IDLE 갱신과 재연결을 구현하고 이 파이프라인에 이벤트를 전달해야 합니다.
+
+`ImapIdleSource`는 MailKit 기반의 연결 구현입니다. `INBOX`와 `Sent`에 인스턴스를 각각 만들고 `ReadEventsAsync()`를 별도 작업으로 실행해야 합니다. 운영 환경에서는 앱 비밀번호를 설정 파일에 저장하지 말고 Windows Credential Manager·DPAPI에서 읽어야 하며, UID 체크포인트를 `lastUid` 메모리 변수보다 영속 저장소로 교체해야 합니다.
