@@ -87,6 +87,20 @@ pythonw .\realtime_email_monitor.pyw
 
 이 프로토타입은 공급자 자동 탐지, OAuth, UIDVALIDITY 영속 체크포인트, 등록 프로그램 파일 출처 연계, 정교한 카드·계좌번호 검증, 악성코드 샌드박스를 아직 포함하지 않는다. 운영 배포 전에는 Windows Service 래퍼와 조직 정책 서버를 연결해야 한다.
 
+## Gmail 연결 테스트
+
+`test_gmail_imap.py`는 Gmail IMAP SSL 연결, INBOX·Sent 접근과 최신 메일의 제목·발신자·날짜 헤더만 확인합니다. 본문과 첨부파일은 다운로드하지 않습니다.
+
+Gmail에서 IMAP을 활성화하고 2단계 인증을 설정한 뒤 앱 비밀번호를 발급합니다.
+
+```powershell
+$env:MAILSHIELD_GMAIL_ADDRESS = "your-account@gmail.com"
+$env:MAILSHIELD_GMAIL_APP_PASSWORD = "16자리 앱 비밀번호"
+python .\test_gmail_imap.py
+```
+
+실패 시 `IMAP 사용 설정`, 앱 비밀번호 공백 제거, 계정 보안 정책과 네트워크 993/TLS 차단 여부를 확인합니다. 일반 Gmail 비밀번호를 코드나 환경변수에 사용하지 마십시오.
+
 ## 우선 개선 순서
 
 1. 서버 하드코딩을 제거하고 자동 탐지 결과를 입력받는 커넥터로 전환한다.
