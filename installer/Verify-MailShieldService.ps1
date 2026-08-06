@@ -1,7 +1,7 @@
 param([string]$ServiceName = "MailShieldAgent")
 $ErrorActionPreference = "Stop"
 $service = Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
-if (-not $service) { throw "Service not found: $ServiceName" }
+if (-not $service) { throw "서비스가 설치되어 있지 않습니다: $ServiceName. 관리자 PowerShell에서 Install-MailShieldAgent.ps1를 먼저 실행하십시오." }
 Write-Host "Service: $($service.Name)"
 Write-Host "State: $($service.State)"
 Write-Host "Start mode: $($service.StartMode)"

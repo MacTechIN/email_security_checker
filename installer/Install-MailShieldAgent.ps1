@@ -2,6 +2,10 @@ param([string]$SourcePath = "$PSScriptRoot\publish", [string]$InstallPath = "$en
 $ErrorActionPreference = "Stop"
 $serviceName = "MailShieldAgent"
 $exe = Join-Path $InstallPath "MailShield.Agent.exe"
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "관리자 권한이 필요합니다. PowerShell을 '관리자 권한으로 실행'한 뒤 다시 실행하십시오."
+}
 if (-not (Test-Path -LiteralPath $SourcePath)) { throw "Publish directory not found: $SourcePath" }
 New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
 Copy-Item -Path (Join-Path $SourcePath '*') -Destination $InstallPath -Recurse -Force
