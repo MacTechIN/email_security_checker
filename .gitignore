@@ -6,6 +6,8 @@ __pycache__/
 .env
 .env.*
 !.env.example
+code_snipt/credentials.json
+code_snipt/token.json
 
 # Build and test outputs
 .pytest_cache/

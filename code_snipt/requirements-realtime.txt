@@ -1,2 +1,4 @@
 imapclient>=3.0,<4.0
 win10toast>=0.9; platform_system == "Windows"
+google-auth>=2.30,<3.0
+google-auth-oauthlib>=1.2,<2.0
