@@ -23,8 +23,8 @@ WizardStyle=modern
 Source: "publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Run]
-Filename: "sc.exe"; Parameters: "create MailShieldAgent binPath= \\"{app}\MailShield.Agent.exe\\" start= auto DisplayName= \\"MailShield Agent\\""; Flags: runhidden waituntilterminated
-Filename: "sc.exe"; Parameters: "description MailShieldAgent \\"MailShield email security monitoring agent\\""; Flags: runhidden waituntilterminated
+Filename: "sc.exe"; Parameters: "create MailShieldAgent binPath= ""{app}\MailShield.Agent.exe"" start= auto DisplayName= ""MailShield Agent"""; Flags: runhidden waituntilterminated
+Filename: "sc.exe"; Parameters: "description MailShieldAgent ""MailShield email security monitoring agent"""; Flags: runhidden waituntilterminated
 Filename: "sc.exe"; Parameters: "start MailShieldAgent"; Flags: runhidden waituntilterminated
 
 [UninstallRun]
