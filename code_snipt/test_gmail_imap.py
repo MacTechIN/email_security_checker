@@ -102,7 +102,11 @@ def main() -> int:
         # 서버 응답에는 비밀번호가 포함되지 않지만, 계정 상태 진단에 필요한 코드가 포함될 수 있다.
         detail = str(exception).replace(password, "<redacted>")
         print(f"[실패] Gmail 서버 인증 응답: {detail}", file=sys.stderr)
-        print("IMAP 활성화, 2단계 인증, 앱 비밀번호·Workspace 정책을 확인하십시오.", file=sys.stderr)
+        if "Application-specific password required" in detail:
+            print("일반 Gmail 비밀번호가 아닌 Google 계정의 16자리 앱 비밀번호를 입력해야 합니다.", file=sys.stderr)
+            print("https://myaccount.google.com/apppasswords 에서 새 앱 비밀번호를 생성하고 공백 없이 입력하십시오.", file=sys.stderr)
+        else:
+            print("IMAP 활성화, 2단계 인증, 앱 비밀번호·Workspace 정책을 확인하십시오.", file=sys.stderr)
         return 1
     except OSError as exception:
         print(f"[실패] 네트워크/TLS 연결: {exception}", file=sys.stderr)
