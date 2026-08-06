@@ -86,6 +86,8 @@ def main() -> int:
     try:
         print(f"{HOST}:{PORT} TLS 연결 중...")
         mail = imaplib.IMAP4_SSL(HOST, PORT, timeout=30)
+        capabilities = mail.capabilities
+        print(f"IMAP capabilities: {', '.join(sorted(str(item) for item in capabilities))}")
         mail.login(address, password)
         print("[성공] Gmail IMAP 인증")
         check_folder(mail, "INBOX")
@@ -96,8 +98,11 @@ def main() -> int:
             print("[주의] 보낸편지함 폴더를 자동으로 찾지 못했습니다.")
         print("Gmail 연결 테스트 완료")
         return 0
-    except imaplib.IMAP4.error:
-        print("[실패] 인증 거부: IMAP 활성화, 2단계 인증, 앱 비밀번호를 확인하십시오.", file=sys.stderr)
+    except imaplib.IMAP4.error as exception:
+        # 서버 응답에는 비밀번호가 포함되지 않지만, 계정 상태 진단에 필요한 코드가 포함될 수 있다.
+        detail = str(exception).replace(password, "<redacted>")
+        print(f"[실패] Gmail 서버 인증 응답: {detail}", file=sys.stderr)
+        print("IMAP 활성화, 2단계 인증, 앱 비밀번호·Workspace 정책을 확인하십시오.", file=sys.stderr)
         return 1
     except OSError as exception:
         print(f"[실패] 네트워크/TLS 연결: {exception}", file=sys.stderr)
