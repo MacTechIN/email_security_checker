@@ -76,6 +76,8 @@ def main() -> int:
         address = input("Gmail 주소: ").strip()
     if not password:
         password = getpass.getpass("Gmail 앱 비밀번호: ").strip()
+    # Google 화면에서 표시하는 4자리 그룹 공백·하이픈을 허용한다.
+    password = password.replace(" ", "").replace("-", "")
     if not address or not password:
         print("Gmail 주소와 앱 비밀번호가 필요합니다.", file=sys.stderr)
         return 2

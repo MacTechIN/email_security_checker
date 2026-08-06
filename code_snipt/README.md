@@ -99,7 +99,7 @@ $env:MAILSHIELD_GMAIL_APP_PASSWORD = "16자리 앱 비밀번호"
 python .\test_gmail_imap.py
 ```
 
-실패 시 `IMAP 사용 설정`, 앱 비밀번호 공백 제거, 계정 보안 정책과 네트워크 993/TLS 차단 여부를 확인합니다. 일반 Gmail 비밀번호를 코드나 환경변수에 사용하지 마십시오.
+실패 시 2단계 인증과 앱 비밀번호 발급 여부, Google Workspace 관리자의 IMAP·앱 비밀번호 허용 정책, 계정 보안 경고와 네트워크 993/TLS 차단 여부를 확인합니다. 스크립트는 앱 비밀번호의 표시용 공백·하이픈을 자동 제거합니다. 일반 Gmail 비밀번호를 코드나 환경변수에 사용하지 마십시오. Google은 일반적으로 OAuth/Sign in with Google을 앱 비밀번호보다 권장합니다.
 
 ## 우선 개선 순서
 
