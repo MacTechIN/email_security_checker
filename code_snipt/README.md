@@ -89,6 +89,8 @@ pythonw .\realtime_email_monitor.pyw
 
 ## Gmail 연결 테스트
 
+처음부터 다시 설정하는 전체 절차(Google Cloud Console OAuth 클라이언트 생성, `credentials.json` 배치, 앱 비밀번호 발급, 문제 해결)는 `docs/05.Gmail연결설치매뉴얼.md`를 참조합니다.
+
 `test_gmail_imap.py`는 Gmail IMAP SSL 연결, INBOX·Sent 접근과 최신 메일의 제목·발신자·날짜 헤더만 확인합니다. 본문과 첨부파일은 다운로드하지 않습니다.
 
 Gmail에서 IMAP을 활성화하고 2단계 인증을 설정한 뒤 앱 비밀번호를 발급합니다.
