@@ -14,6 +14,7 @@ import email
 import getpass
 import imaplib
 import os
+import re
 import sys
 from email.header import decode_header
 
@@ -34,19 +35,41 @@ def decode_header_value(value: str | None) -> str:
     return "".join(output).replace("\r", " ").replace("\n", " ")
 
 
-def first_folder(mail: imaplib.IMAP4_SSL, candidates: list[str]) -> str | None:
+def parse_list_line(line: bytes) -> tuple[set[str], str] | None:
+    """LIST 응답 한 줄에서 (플래그 집합, 실제 폴더 이름)을 추출한다."""
+    text = line.decode("utf-8", errors="replace")
+    match = re.match(r'\((?P<flags>[^)]*)\)\s+(?:"[^"]*"|NIL)\s+(?P<name>"(?:[^"\\]|\\.)*"|\S+)$', text)
+    if not match:
+        return None
+    flags = {flag.lower() for flag in match.group("flags").split()}
+    name = match.group("name")
+    if name.startswith('"') and name.endswith('"'):
+        name = name[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    return flags, name
+
+
+def find_sent_folder(mail: imaplib.IMAP4_SSL) -> str | None:
+    """SPECIAL-USE \\Sent 플래그를 우선하고, 없으면 공급자별 실제 이름으로 대체한다."""
     status, folders = mail.list()
     if status != "OK" or not folders:
         return None
-    names = [item.decode("utf-8", errors="replace") for item in folders if isinstance(item, bytes)]
-    for candidate in candidates:
-        if any(candidate.lower() in name.lower() for name in names):
+    parsed = [item for item in (parse_list_line(f) for f in folders if isinstance(f, bytes)) if item]
+    for flags, name in parsed:
+        if "\\sent" in flags:
+            return name
+    names = [name for _, name in parsed]
+    for candidate in ("[Gmail]/Sent Mail", "[Gmail]/보낸편지함", "Sent Items", "Sent Messages", "Sent", "보낸편지함"):
+        if candidate in names:
             return candidate
     return None
 
 
+def quote_folder(folder: str) -> str:
+    return '"' + folder.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def check_folder(mail: imaplib.IMAP4_SSL, folder: str) -> None:
-    status, _ = mail.select(folder, readonly=True)
+    status, _ = mail.select(quote_folder(folder), readonly=True)
     if status != "OK":
         print(f"[실패] 폴더 접근: {folder}")
         return
@@ -91,8 +114,9 @@ def main() -> int:
         mail.login(address, password)
         print("[성공] Gmail IMAP 인증")
         check_folder(mail, "INBOX")
-        sent = first_folder(mail, ["Sent", "보낸편지함"])
+        sent = find_sent_folder(mail)
         if sent:
+            print(f"보낸편지함 폴더: {sent}")
             check_folder(mail, sent)
         else:
             print("[주의] 보낸편지함 폴더를 자동으로 찾지 못했습니다.")
