@@ -173,11 +173,16 @@ def watch_folder(host: str, port: int, user: str, password: str, folder: str) ->
 
             while not STOP_EVENT.is_set():
                 client.idle()
-                responses = client.idle_check(timeout=25)
-                client.idle_done()
+                responses = list(client.idle_check(timeout=25))
+                # 일부 환경(Python 3.14 + imapclient 3.x)에서는 EXISTS 알림이
+                # idle_check가 아니라 idle_done 응답에만 실려 오므로 둘을 합쳐 본다.
+                _, done_responses = client.idle_done()
+                responses.extend(done_responses or [])
                 if not responses:
                     continue
-                latest = client.search(["UID", f"{last_uid + 1}:*"])
+                # IMAP의 "N:*"는 N이 마지막 UID보다 크면 마지막 메시지를 되돌려 주므로
+                # 이미 처리한 UID는 걸러낸다.
+                latest = [uid for uid in client.search(["UID", f"{last_uid + 1}:*"]) if int(uid) > last_uid]
                 for uid in latest:
                     fetched = client.fetch([uid], [b"RFC822"])
                     raw = fetched.get(uid, {}).get(b"RFC822")
