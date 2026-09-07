@@ -140,6 +140,7 @@ class GoogleOAuth:
             authorization_prompt_message="",
             success_message="MailShield 인증이 완료되었습니다. 이 창을 닫아도 됩니다.",
             open_browser=True,
+            timeout_seconds=300,  # 브라우저 응답이 없으면 5분 후 포기해 UI 버튼이 되살아나게 한다.
         )
         self._store.set_oauth_token(email, creds.to_json())
         return creds
