@@ -1,7 +1,6 @@
 """브라우저 OAuth 2.0 + Gmail IMAP XOAUTH2 연결 확인 도구."""
 from __future__ import annotations
 
-import base64
 import imaplib
 import os
 from pathlib import Path
@@ -37,7 +36,8 @@ def main() -> int:
     address = os.getenv("MAILSHIELD_GMAIL_ADDRESS", "wooriszhome@gmail.com")
     payload = f"user={address}\1auth=Bearer {creds.token}\1\1".encode()
     mail = imaplib.IMAP4_SSL("imap.gmail.com", 993, timeout=30)
-    mail.authenticate("XOAUTH2", lambda _: base64.b64encode(payload))
+    # imaplib.authenticate가 base64 인코딩을 수행하므로 원시 바이트를 그대로 반환한다.
+    mail.authenticate("XOAUTH2", lambda _: payload)
     status, _ = mail.select("INBOX", readonly=True)
     print(f"[성공] OAuth/XOAUTH2 Gmail 인증, INBOX={status}")
     mail.logout()
