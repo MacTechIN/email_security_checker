@@ -18,3 +18,4 @@ bin/
 obj/
 installer/publish/
 installer/output/
+code_snipt/client_secret_*.json
