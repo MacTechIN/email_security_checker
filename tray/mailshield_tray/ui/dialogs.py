@@ -62,6 +62,7 @@ class AccountDialog(tk.Toplevel):
         self.var_extra = tk.StringVar(value=", ".join(f for f in account.folders if f not in ("INBOX", FOLDER_AUTO_SENT)))
         self.var_autostart = tk.BooleanVar(value=settings.autostart)
         self.var_notify_safe = tk.BooleanVar(value=settings.notify_safe_mail)
+        self.var_notify_medium = tk.BooleanVar(value=settings.notify_medium_mail)
         self.var_oauth_status = tk.StringVar(value="")
         self.var_message = tk.StringVar(value="")
 
@@ -128,7 +129,8 @@ class AccountDialog(tk.Toplevel):
         option_box = ttk.Frame(frame)
         option_box.grid(row=7, column=1, columnspan=2, sticky="we", **pad)
         ttk.Checkbutton(option_box, text="Windows 시작 시 자동 실행", variable=self.var_autostart).grid(row=0, column=0, sticky="w")
-        ttk.Checkbutton(option_box, text="정상 메일도 알림 표시", variable=self.var_notify_safe).grid(row=1, column=0, sticky="w")
+        ttk.Checkbutton(option_box, text="'주의' 등급(연락처·주소·실명 등) 알림 표시", variable=self.var_notify_medium).grid(row=1, column=0, sticky="w")
+        ttk.Checkbutton(option_box, text="정상 메일도 알림 표시", variable=self.var_notify_safe).grid(row=2, column=0, sticky="w")
 
         ttk.Label(frame, textvariable=self.var_message, foreground="#B3261E", wraplength=440, justify="left").grid(row=8, column=0, columnspan=3, sticky="w", **pad)
 
@@ -266,6 +268,7 @@ class AccountDialog(tk.Toplevel):
             account=account,
             autostart=self.var_autostart.get(),
             notify_safe_mail=self.var_notify_safe.get(),
+            notify_medium_mail=self.var_notify_medium.get(),
             idle_timeout_seconds=self._settings.idle_timeout_seconds,
             catch_up_limit=self._settings.catch_up_limit,
         )
@@ -352,7 +355,7 @@ class IncidentsWindow(tk.Toplevel):
                 values=(
                     str(item.get("scanned_at", ""))[:19].replace("T", " "),
                     item.get("folder", ""),
-                    "높음" if item.get("risk") == "high" else "정상",
+                    {"high": "높음", "medium": "주의"}.get(item.get("risk"), "정상"),
                     item.get("subject", ""),
                     ", ".join(item.get("findings", [])) or "-",
                 ),

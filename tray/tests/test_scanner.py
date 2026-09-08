@@ -1,55 +1,159 @@
 from email.message import EmailMessage
 
+import pytest
+
 from mailshield_tray import scanner
 
 
-def _raw(subject: str, body: str, attachment: tuple[str, bytes] | None = None) -> bytes:
+def _raw(subject: str, body: str, attachment: tuple[str, bytes] | None = None, html: bool = False) -> bytes:
     message = EmailMessage()
     message["From"] = "Sender Name <sender@example.com>"
     message["To"] = "me@example.com"
     message["Subject"] = subject
-    message.set_content(body)
+    if html:
+        message.set_content("plain fallback")
+        message.add_alternative(body, subtype="html")
+    else:
+        message.set_content(body)
     if attachment:
         name, data = attachment
         message.add_attachment(data, maintype="application", subtype="octet-stream", filename=name)
     return message.as_bytes()
 
 
+def _scan(body: str, subject: str = "제목", **kwargs) -> scanner.ScanResult:
+    return scanner.scan_message(_raw(subject, body, **kwargs), "INBOX", 1, own_addresses=("me@example.com",))
+
+
+# --- 기본 ---
+
 def test_safe_mail_has_no_findings():
-    result = scanner.scan_message(_raw("안녕하세요", "정상 업무 메일입니다."), "INBOX", 1)
+    result = _scan("정상 업무 메일입니다. 회의 자료 검토 부탁드립니다.", subject="안녕하세요")
     assert result.risk == "safe"
     assert result.findings == []
     assert result.subject == "안녕하**"
 
 
-def test_rrn_detected_without_card_false_positive():
-    result = scanner.scan_message(_raw("테스트", "테스트 901231-1234567"), "INBOX", 2)
-    assert "주민등록번호 의심 패턴" in result.findings
-    assert "카드·계좌번호 의심 패턴" not in result.findings
+def test_sender_and_subject_are_masked():
+    result = _scan("x", subject="Confidential quarterly report")
+    assert result.sender.startswith("Send")
+    assert "example.com" not in result.sender
+
+
+# --- 고위험 ---
+
+def test_rrn_detected_without_card_or_phone_false_positive():
+    result = _scan("테스트 901231-1234567")
+    assert "주민등록번호 1건" in result.findings
+    assert not any(f.startswith("카드번호") or "전화" in f for f in result.findings)
     assert result.risk == "high"
 
 
+def test_rrn_requires_plausible_birth_date():
+    assert scanner.scan_text("991399-1234567") == {}
+
+
+def test_foreign_registration_number():
+    assert scanner.scan_text("외국인등록번호 900101-5123456") == {"frn": 1}
+
+
 def test_card_number_requires_luhn():
-    valid = scanner.scan_message(_raw("카드", "4111 1111 1111 1111 로 결제"), "INBOX", 3)
-    invalid = scanner.scan_message(_raw("카드", "1234-5678-9012-3456 로 결제"), "INBOX", 4)
-    assert "카드·계좌번호 의심 패턴" in valid.findings
-    assert "카드·계좌번호 의심 패턴" not in invalid.findings
+    assert "card" in scanner.scan_text("4111 1111 1111 1111 로 결제")
+    assert "card" not in scanner.scan_text("1234-5678-9012-3456 로 결제")
+
+
+def test_bank_account_with_bank_context():
+    counts = scanner.scan_text("국민은행 123456-04-123456 예금주 홍길동")
+    assert counts.get("account") == 1
+    assert counts.get("name") == 1
+
+
+def test_driver_license_and_passport():
+    counts = scanner.scan_text("면허 11-12-123456-78 / 여권 M12345678")
+    assert counts == {"driver": 1, "passport": 1}
 
 
 def test_credential_keyword_in_subject():
-    result = scanner.scan_message(_raw("비밀번호 안내", "본문에는 아무것도 없음"), "INBOX", 5)
+    result = _scan("본문에는 아무것도 없음", subject="비밀번호 안내")
     assert "인증정보 키워드" in result.findings
+    assert result.risk == "high"
 
+
+# --- 주의 등급 ---
+
+def test_mobile_and_landline_phone():
+    counts = scanner.scan_text("연락처 010-1234-5678, 사무실 02-345-6789, +82 10 9876 5432")
+    assert counts.get("mobile") == 2
+    assert counts.get("phone") == 1
+
+
+def test_email_addresses_exclude_participants_and_own():
+    body = "문의: partner@other.com 또는 sender@example.com, me@example.com"
+    result = _scan(body)
+    assert "이메일 주소 1건" in result.findings
+    assert result.risk == "medium"
+
+
+def test_korean_address_and_postal_code():
+    counts = scanner.scan_text("배송지: 서울특별시 강남구 테헤란로 152, 우편번호 06236")
+    assert counts.get("address") == 1
+    assert counts.get("postal") == 1
+
+
+def test_real_name_with_title_or_label():
+    assert scanner.scan_text("안녕하세요 김철수 과장님").get("name") == 1
+    assert scanner.scan_text("성명: 박영희").get("name") == 1
+    # 성씨가 아닌 일반 단어는 실명으로 보지 않는다.
+    assert "name" not in scanner.scan_text("회의 자료 검토 부탁드립니다")
+    assert "name" not in scanner.scan_text("감사합니다 팀장님")
+
+
+def test_birth_date_and_health_keywords():
+    counts = scanner.scan_text("생년월일 1990-05-21, 진단서 첨부")
+    assert counts.get("birth") == 1
+    assert counts.get("health") == 1
+
+
+def test_business_registration_number():
+    assert scanner.scan_text("사업자등록번호 123-45-67890") == {"biz": 1}
+
+
+def test_html_body_is_scanned():
+    result = _scan("<html><body><p>전화 <b>010-2222-3333</b></p></body></html>", html=True)
+    assert "휴대전화번호 1건" in result.findings
+
+
+def test_medium_only_findings_yield_medium_risk():
+    result = _scan("담당자: 이민호 010-1111-2222")
+    assert result.risk == "medium"
+    assert set(result.counts) == {"name", "mobile"}
+
+
+# --- 첨부·랜섬웨어 통합 ---
 
 def test_executable_and_double_extension_attachment():
-    result = scanner.scan_message(_raw("첨부", "파일 확인", ("invoice.pdf.exe", b"MZ")), "INBOX", 6)
+    result = _scan("파일 확인", attachment=("invoice.pdf.exe", b"MZ\x90\x00"))
     assert any(f.startswith("실행 가능 첨부파일") for f in result.findings)
     assert any(f.startswith("이중 확장자 의심") for f in result.findings)
     assert result.attachments[0].sha256 is not None
+    assert result.risk == "high"
 
 
-def test_sender_and_subject_are_masked():
-    result = scanner.scan_message(_raw("Confidential quarterly report", "x"), "INBOX", 7)
-    assert result.sender.startswith("Send")
-    assert "*" in result.sender
-    assert "example.com" not in result.sender
+def test_disguised_pe_as_pdf_is_high():
+    result = _scan("보고서", attachment=("report.pdf", b"MZ\x90\x00\x03\x00\x00\x00"))
+    assert any("확장자 위장 Windows 실행 파일" in f for f in result.findings)
+    assert result.risk == "high"
+
+
+def test_ransom_note_in_body_is_high():
+    body = "All your files have been encrypted. To get the decryption key, pay 0.5 bitcoin via Tor browser."
+    result = _scan(body)
+    assert any(f.startswith("랜섬웨어 협박 문구") for f in result.findings)
+    assert result.risk == "high"
+
+
+@pytest.mark.parametrize("value", ["901231-1234567", "4111 1111 1111 1111", "010-1234-5678", "partner@other.com"])
+def test_raw_values_never_stored(value):
+    result = _scan(f"값 {value}")
+    dumped = str(result.to_dict())
+    assert value not in dumped

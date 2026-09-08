@@ -39,6 +39,7 @@ class Settings:
     account: AccountSettings = field(default_factory=AccountSettings)
     autostart: bool = True
     notify_safe_mail: bool = False
+    notify_medium_mail: bool = True  # 연락처·주소·실명 등 '주의' 등급 알림. 끄면 기록만 남긴다.
     idle_timeout_seconds: int = 25
     catch_up_limit: int = 200
 
@@ -53,7 +54,7 @@ class Settings:
             return cls()
         account = AccountSettings(**{k: v for k, v in data.get("account", {}).items() if k in AccountSettings.__dataclass_fields__})
         settings = cls(account=account)
-        for key in ("autostart", "notify_safe_mail", "idle_timeout_seconds", "catch_up_limit"):
+        for key in ("autostart", "notify_safe_mail", "notify_medium_mail", "idle_timeout_seconds", "catch_up_limit"):
             if key in data:
                 setattr(settings, key, data[key])
         return settings
@@ -146,7 +147,7 @@ class IncidentLog:
         with self._lock:
             items: Iterable[dict] = list(self._recent)
         if risky_only:
-            items = [item for item in items if item.get("risk") == "high"]
+            items = [item for item in items if item.get("risk") in ("high", "medium")]
         return list(items)[-limit:][::-1]
 
     def clear(self) -> None:

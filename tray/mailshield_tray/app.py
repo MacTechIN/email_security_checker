@@ -144,6 +144,8 @@ class App:
                 self._last_alert_at = time.monotonic()
                 self.notifier.show(f"{APP_NAME} 위험 메일 감지", f"{result.folder}: {result.subject}\n{result.summary}")
                 self.root.after(ALERT_HOLD_SECONDS * 1000 + 500, self._refresh_tray)
+            elif result.risk == "medium" and self.settings.notify_medium_mail:
+                self.notifier.show(f"{APP_NAME} 개인정보 포함 메일", f"{result.folder}: {result.subject}\n{result.summary}")
             elif self.settings.notify_safe_mail:
                 self.notifier.show(f"{APP_NAME} 새 메일", f"{result.folder}: {result.subject}\n위험 요소 없음")
             if self._incidents_window is not None and self._incidents_window.winfo_exists():

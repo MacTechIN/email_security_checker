@@ -235,7 +235,7 @@ class FolderWatcher(threading.Thread):
                 fetched = client.fetch([uid], [b"RFC822"])
                 raw = fetched.get(uid, {}).get(b"RFC822")
                 if raw:
-                    result = scan_message(raw, folder, uid)
+                    result = scan_message(raw, folder, uid, own_addresses=(self._account.email,))
                     log.info("분석 결과: %s", result.to_dict())
                     try:
                         self._on_result(result)
