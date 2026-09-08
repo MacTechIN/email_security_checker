@@ -27,3 +27,4 @@ tray/output/
 tray/build/pyi/
 tray/build/MailShieldTray.ico
 tray/mailshield_tray/resources/google_client.json
+tray/dist-next/
