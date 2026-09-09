@@ -197,3 +197,46 @@ def test_local_timezone_label_matches_offset():
     hours, remainder = divmod(abs(minutes), 60)
     expected = f"UTC{'-' if minutes < 0 else '+'}{hours}" + (f":{remainder:02d}" if remainder else "")
     assert scanner.local_timezone_label() == expected
+
+# --- URL 오탐 회귀 (2026-09-09 LinkedIn 알림 사례) ---
+
+LINKEDIN_URL = (
+    "https://www.linkedin.com/comm/feed/update/urn:li:activity:7501708252628275200"
+    "?highlightedUpdateUrn=urn%3Ali%3Aactivity%3A7501708252628275200"
+    "&midToken=AQE&eid=k8bwrs-mtu08k9r-kp&otpToken=ODYyZTM2NDc4MmEzMjE"
+)
+
+
+def test_tracking_url_digits_are_not_card_numbers():
+    """LinkedIn activity ID가 Luhn을 우연히 통과해 카드번호로 잡히던 문제."""
+    assert scanner.scan_text(f"게시물을 확인하세요 {LINKEDIN_URL}") == {}
+
+
+def test_url_token_names_are_not_credential_keywords():
+    """URL의 otpToken 파라미터가 인증정보 키워드로 잡히던 문제."""
+    assert "credential" not in scanner.scan_text(f"자세히 보기 {LINKEDIN_URL}")
+
+
+def test_otp_requires_word_boundary():
+    assert "credential" not in scanner.scan_text("otpToken=abc, passwordless 로그인")
+    assert scanner.scan_text("OTP 번호를 입력하세요").get("credential") == 1
+
+
+def test_real_credential_keywords_still_detected():
+    for text in ("비밀번호 안내드립니다", "your API key is attached", "access token 재발급"):
+        assert "credential" in scanner.scan_text(text), text
+
+
+def test_pii_outside_urls_is_still_detected():
+    text = f"연락처 010-1234-5678 {LINKEDIN_URL} 주민번호 901231-1234567"
+    counts = scanner.scan_text(text)
+    assert counts.get("mobile") == 1
+    assert counts.get("rrn") == 1
+
+
+def test_strip_urls_preserves_offsets():
+    text = f"앞 {LINKEDIN_URL} 뒤"
+    stripped = scanner.strip_urls(text)
+    assert len(stripped) == len(text)
+    assert "linkedin.com" not in stripped
+    assert stripped.startswith("앞 ") and stripped.endswith(" 뒤")

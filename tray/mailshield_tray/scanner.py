@@ -26,6 +26,14 @@ from .threats import RISK_HIGH, RISK_MEDIUM, RISK_SAFE
 
 Span = tuple[int, int]
 
+# 개인정보 검사 전에 지워낼 링크. 추적 파라미터의 긴 숫자 ID와 토큰 이름이 오탐을 만든다.
+URL_PATTERN = re.compile(
+    r"""(?xi)
+    \b(?:https?|ftp)://[^\s<>"']+
+  | \bwww\.[\w-]+(?:\.[\w-]+)+[^\s<>"']*
+"""
+)
+
 
 @dataclass(frozen=True)
 class Rule:
@@ -100,7 +108,8 @@ RULES: tuple[Rule, ...] = (
         ),
         _account_valid,
     ),
-    Rule("credential", "인증정보 키워드", RISK_HIGH, re.compile(r"(?i)(password|passwd|pwd\s*[:=]|비밀번호|패스워드|인증번호|otp|api[_ -]?key|secret[_ -]?key|access[_ -]?token|공인인증서|보안카드)")),
+    # 영문 키워드는 단어 경계를 요구한다. 경계가 없으면 `otpToken`, `passwordless` 같은 식별자에 걸린다.
+    Rule("credential", "인증정보 키워드", RISK_HIGH, re.compile(r"(?i)(\b(?:password|passwd|otp|api[_ -]?key|secret[_ -]?key|access[_ -]?token)\b|pwd\s*[:=]|비밀번호|패스워드|인증번호|공인인증서|보안카드)")),
     # --- medium: 연락처·주소·실명·생년월일·건강 ---
     Rule("mobile", "휴대전화번호", RISK_MEDIUM, re.compile(r"(?<!\d)(?:\+82[- ]?1?0|010|011|016|017|018|019)[- .]?\d{3,4}[- .]?\d{4}(?!\d)")),
     Rule("phone", "유선전화번호", RISK_MEDIUM, re.compile(r"(?<!\d)(?:\+82[- ]?|0)(?:2|3[1-3]|4[1-4]|5[1-5]|6[1-4]|70|50\d?)[- .)]?\d{3,4}[- .]?\d{4}(?!\d)")),
@@ -279,8 +288,18 @@ def _participants(message: email.message.Message) -> set[str]:
     return addresses
 
 
+def strip_urls(text: str) -> str:
+    """URL을 같은 길이의 공백으로 지운다(오프셋 유지).
+
+    링크의 추적 파라미터에는 긴 숫자 ID와 `otpToken` 같은 식별자가 들어 있어
+    카드번호·인증정보 규칙의 오탐 원인이 된다. 링크 자체의 위험은 별도 URL 검사기가 맡는다.
+    """
+    return URL_PATTERN.sub(lambda m: " " * (m.end() - m.start()), text)
+
+
 def scan_text(text: str, ignore_emails: set[str] | None = None) -> dict[str, int]:
     """본문에서 규칙별 탐지 건수를 돌려준다. 값 원문은 반환하지 않는다."""
+    text = strip_urls(text)
     ignore_emails = {a.lower() for a in (ignore_emails or set())}
     counts: dict[str, int] = {}
     taken: list[Span] = []
