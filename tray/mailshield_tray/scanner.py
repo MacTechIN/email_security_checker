@@ -143,7 +143,8 @@ RULES: tuple[Rule, ...] = (
         "birth",
         "생년월일",
         RISK_MEDIUM,
-        re.compile(r"(?:생년월일|생일|출생|birth(?:day|\s*date)?|DOB)\s*[:：]?\s*(?P<y>19\d{2}|20\d{2})\s*[.\-/년]\s*(?P<m>0?[1-9]|1[0-2])\s*[.\-/월]\s*(?P<d>0?[1-9]|[12]\d|3[01])\s*일?"),
+        # 두 자리 알터너티브를 먼저 둔다. 순서를 뒤집으면 '21일'에서 '2'만 잡혀 값 범위가 어긋난다.
+        re.compile(r"(?:생년월일|생일|출생|birth(?:day|\s*date)?|DOB)\s*[:：]?\s*(?P<y>19\d{2}|20\d{2})\s*[.\-/년]\s*(?P<m>1[0-2]|0?[1-9])(?!\d)\s*[.\-/월]\s*(?P<d>3[01]|[12]\d|0?[1-9])(?!\d)\s*일?"),
         _birth_valid,
     ),
     Rule(
@@ -339,7 +340,18 @@ class Evidence:
     risk: str
     masked_value: str
     context: str
-    in_url: bool = False
+
+
+def _value_span(match: re.Match) -> Span:
+    """규칙이 값 그룹을 정의했으면 그 범위를, 아니면 매치 전체를 돌려준다.
+
+    '예금주 홍길동'에서 라벨까지 가리지 않고 이름만 가리기 위한 것이다.
+    """
+    spans = [match.span(name) for name in match.re.groupindex if match.group(name) is not None]
+    spans = [span for span in spans if span != (-1, -1)]
+    if not spans:
+        return match.span()
+    return min(span[0] for span in spans), max(span[1] for span in spans)
 
 
 def _mask_value(key: str, value: str) -> str:
@@ -353,11 +365,13 @@ def _mask_value(key: str, value: str) -> str:
 
 
 def explain_text(text: str, ignore_emails: set[str] | None = None, context_chars: int = 60) -> list[Evidence]:
-    """scan_text와 같은 판정을 하되, 근거로 쓸 문맥을 함께 돌려준다."""
+    """scan_text와 같은 판정을 하되, 근거로 쓸 문맥을 함께 돌려준다.
+
+    문맥에는 탐지된 값이 그대로 남지 않는다. 근처의 다른 탐지값도 함께 가린다.
+    """
     ignore_emails = {a.lower() for a in (ignore_emails or set())}
-    url_spans = [m.span() for m in URL_PATTERN.finditer(text)]
     stripped = strip_urls(text)
-    found: list[Evidence] = []
+    hits: list[tuple[Rule, Span, Span, str]] = []
     taken: list[Span] = []
     for rule in RULES:
         for match in rule.pattern.finditer(stripped):
@@ -368,20 +382,28 @@ def explain_text(text: str, ignore_emails: set[str] | None = None, context_chars
             if rule.key == "email" and match.group().lower() in ignore_emails:
                 continue
             taken.append(match.span())
-            start = max(0, match.start() - context_chars)
-            end = min(len(text), match.end() + context_chars)
-            # 문맥은 URL을 지우기 전 원문에서 잘라야 사용자가 위치를 알아볼 수 있다.
-            context = " ".join(text[start:end].split())
-            found.append(
-                Evidence(
-                    key=rule.key,
-                    label=rule.label,
-                    risk=rule.risk,
-                    masked_value=_mask_value(rule.key, match.group()),
-                    context=context,
-                    in_url=any(s <= match.start() < e for s, e in url_spans),
-                )
+            value_span = _value_span(match)
+            hits.append((rule, match.span(), value_span, _mask_value(rule.key, stripped[slice(*value_span)])))
+
+    # 마스킹은 길이를 그대로 유지하므로 원문 위치를 그대로 쓸 수 있다.
+    chars = list(text)
+    for _rule, _match_span, (start, end), masked in hits:
+        chars[start:end] = list(masked)
+    masked_text = "".join(chars)
+
+    found: list[Evidence] = []
+    for rule, (start, end), _value_range, masked in sorted(hits, key=lambda item: item[1]):
+        left = max(0, start - context_chars)
+        right = min(len(masked_text), end + context_chars)
+        found.append(
+            Evidence(
+                key=rule.key,
+                label=rule.label,
+                risk=rule.risk,
+                masked_value=masked,
+                context=" ".join(masked_text[left:right].split()),
             )
+        )
     return found
 
 

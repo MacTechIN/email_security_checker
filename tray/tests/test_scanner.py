@@ -251,7 +251,6 @@ def test_explain_reports_context_and_masks_value():
     assert ev.masked_value == "010" + "*" * 8 + "78"
     assert "010-1234-5678" not in ev.masked_value
     assert "담당자 연락처는" in ev.context
-    assert ev.in_url is False
 
 
 def test_explain_keeps_keyword_matches_readable():
@@ -288,3 +287,39 @@ def test_label_followed_by_common_noun_is_not_a_name():
 def test_label_followed_by_real_name_still_detected():
     for text in ("예금주 홍길동", "담당자 김철수", "담당자 김지은", "성명: 박영희"):
         assert scanner.scan_text(text).get("name") == 1, text
+
+
+def test_evidence_context_masks_every_detected_value():
+    """문맥에 탐지값 원문이 남으면 마스킹이 무의미하다. 근처의 다른 값도 함께 가린다."""
+    text = "테스트 901231-1234567 테스트 901231-1234567"
+    evidence = scanner.explain_text(text)
+    assert len(evidence) == 2
+    for ev in evidence:
+        assert "901231-1234567" not in ev.context
+        assert "901231-1234567" not in ev.masked_value
+    assert "901" in evidence[0].context and "테스트" in evidence[0].context
+
+
+def test_evidence_context_masks_neighbouring_other_rule():
+    text = "담당자 김철수 연락처 010-1234-5678"
+    for ev in scanner.explain_text(text):
+        assert "010-1234-5678" not in ev.context
+        assert "김철수" not in ev.context
+
+
+def test_birth_date_value_span_covers_two_digit_day():
+    """정규식 알터너티브 순서 때문에 '21'에서 '2'만 잡히던 문제."""
+    [ev] = scanner.explain_text("생년월일 1990-05-21")
+    assert len(ev.masked_value) == len("1990-05-21")
+    assert "1990-05-21" not in ev.context
+
+
+def test_birth_date_rejects_impossible_day():
+    assert "birth" not in scanner.scan_text("생년월일 1990-05-99")
+
+
+def test_evidence_masks_only_the_value_not_the_label():
+    [ev] = scanner.explain_text("예금주 홍길동")
+    assert ev.label == "실명"
+    assert ev.context.startswith("예금주 ")
+    assert "홍길동" not in ev.context

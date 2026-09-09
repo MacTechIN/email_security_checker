@@ -530,9 +530,8 @@ class IncidentDetailWindow(tk.Toplevel):
         else:
             lines.append(f"탐지 근거 {len(evidence)}건 (값은 가려서 표시합니다)")
             for index, item in enumerate(evidence, 1):
-                where = " [링크 안]" if item.in_url else ""
                 lines.append("")
-                lines.append(f"{index}. {item.label} · {self.RISK_LABELS.get(item.risk, item.risk)}{where}")
+                lines.append(f"{index}. {item.label} · {self.RISK_LABELS.get(item.risk, item.risk)}")
                 lines.append(f"   값   : {item.masked_value}")
                 lines.append(f"   문맥 : ...{item.context}...")
         self._write("\n".join(lines))
