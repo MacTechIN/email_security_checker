@@ -12,11 +12,14 @@ from typing import Callable
 from .. import APP_DISPLAY_NAME, VERSION
 from .. import autostart, providers
 from ..auth import AuthError, Authenticator, CredentialStore, GoogleOAuth
-from ..monitor import test_connection
-from ..scanner import local_timestamp, local_timezone_label
+from ..monitor import FetchedMessage, test_connection
+from ..scanner import Evidence, local_timestamp, local_timezone_label
 from ..store import AUTH_APP_PASSWORD, AUTH_OAUTH, FOLDER_AUTO_SENT, AccountSettings, IncidentLog, Settings
 
 Dispatch = Callable[[Callable[[], None]], None]  # 워커 스레드 → UI 스레드
+# (폴더, UID) -> (원본 메일, 탐지 근거). 워커 스레드에서 호출한다.
+EvidenceResult = tuple[FetchedMessage, list[Evidence]]
+EvidenceSource = Callable[[str, int], EvidenceResult]
 
 
 class _OverrideStore(CredentialStore):
@@ -320,12 +323,22 @@ class AccountDialog(tk.Toplevel):
 
 
 class IncidentsWindow(tk.Toplevel):
-    def __init__(self, master: tk.Misc, incidents: IncidentLog) -> None:
+    def __init__(
+        self,
+        master: tk.Misc,
+        incidents: IncidentLog,
+        evidence_source: EvidenceSource | None = None,
+        dispatch: Dispatch | None = None,
+    ) -> None:
         super().__init__(master)
         self.title(f"{APP_DISPLAY_NAME} - 최근 위험 메일")
-        self.geometry("760x360")
+        self.geometry("760x400")
         self.attributes("-topmost", True)
         self._incidents = incidents
+        self._evidence_source = evidence_source
+        self._dispatch = dispatch or (lambda func: func())
+        self._rows: dict[str, dict] = {}
+        self._detail: IncidentDetailWindow | None = None
         columns = ("time", "folder", "risk", "subject", "findings")
         self.tree = ttk.Treeview(self, columns=columns, show="headings")
         headings = {"time": (f"시각({local_timezone_label()})", 150), "folder": ("폴더", 120), "risk": ("위험", 50), "subject": ("제목(마스킹)", 160), "findings": ("탐지 내용", 260)}
@@ -336,10 +349,15 @@ class IncidentsWindow(tk.Toplevel):
         self.tree.configure(yscrollcommand=scroll.set)
         self.tree.grid(row=0, column=0, sticky="nsew")
         scroll.grid(row=0, column=1, sticky="ns")
+        self.tree.bind("<Double-1>", lambda _e: self.open_detail())
+        self.tree.bind("<Return>", lambda _e: self.open_detail())
+        hint = ttk.Label(self, text="행을 두 번 누르면 탐지 근거를 원본 메일에서 확인할 수 있습니다.", foreground="#555", padding=(8, 2))
+        hint.grid(row=1, column=0, columnspan=2, sticky="w")
         buttons = ttk.Frame(self, padding=6)
-        buttons.grid(row=1, column=0, columnspan=2, sticky="e")
+        buttons.grid(row=2, column=0, columnspan=2, sticky="e")
         self.var_all = tk.BooleanVar(value=False)
         ttk.Checkbutton(buttons, text="정상 메일 포함", variable=self.var_all, command=self.refresh).pack(side="left", padx=8)
+        ttk.Button(buttons, text="탐지 근거 보기", command=self.open_detail).pack(side="left", padx=4)
         ttk.Button(buttons, text="새로 고침", command=self.refresh).pack(side="left", padx=4)
         ttk.Button(buttons, text="기록 지우기", command=self._clear).pack(side="left", padx=4)
         ttk.Button(buttons, text="닫기", command=self.destroy).pack(side="left", padx=4)
@@ -347,10 +365,22 @@ class IncidentsWindow(tk.Toplevel):
         self.columnconfigure(0, weight=1)
         self.refresh()
 
+    def open_detail(self) -> None:
+        selection = self.tree.selection() or self.tree.focus()
+        row_id = selection[0] if isinstance(selection, tuple) and selection else (selection if isinstance(selection, str) else "")
+        record = self._rows.get(row_id)
+        if record is None:
+            messagebox.showinfo(APP_DISPLAY_NAME, "근거를 볼 사건을 목록에서 먼저 선택하십시오.", parent=self)
+            return
+        if self._detail is not None and self._detail.winfo_exists():
+            self._detail.destroy()
+        self._detail = IncidentDetailWindow(self, record, self._evidence_source, self._dispatch)
+
     def refresh(self) -> None:
         self.tree.delete(*self.tree.get_children())
+        self._rows.clear()
         for item in self._incidents.recent(limit=200, risky_only=not self.var_all.get()):
-            self.tree.insert(
+            row_id = self.tree.insert(
                 "",
                 "end",
                 values=(
@@ -361,11 +391,152 @@ class IncidentsWindow(tk.Toplevel):
                     ", ".join(item.get("findings", [])) or "-",
                 ),
             )
+            self._rows[row_id] = item
 
     def _clear(self) -> None:
         if messagebox.askyesno(APP_DISPLAY_NAME, "최근 사건 기록을 모두 지우시겠습니까?", parent=self):
             self._incidents.clear()
             self.refresh()
+
+
+class IncidentDetailWindow(tk.Toplevel):
+    """사건 한 건의 상세. 저장된 요약을 먼저 보여 주고, 원본 메일에서 근거를 읽어 온다."""
+
+    RISK_LABELS = {"high": "높음", "medium": "주의", "safe": "정상"}
+
+    def __init__(self, master: tk.Misc, record: dict, evidence_source: EvidenceSource | None, dispatch: Dispatch) -> None:
+        super().__init__(master)
+        self.title(f"{APP_DISPLAY_NAME} - 탐지 상세")
+        self.geometry("820x560")
+        self.attributes("-topmost", True)
+        self._record = record
+        self._source = evidence_source
+        self._dispatch = dispatch
+        self._loading = False
+
+        frame = ttk.Frame(self, padding=10)
+        frame.grid(row=0, column=0, sticky="nsew")
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        summary = ttk.LabelFrame(frame, text="사건 요약(저장된 정보)", padding=8)
+        summary.grid(row=0, column=0, sticky="we")
+        summary.columnconfigure(1, weight=1)
+        risk = self.RISK_LABELS.get(str(record.get("risk")), "정상")
+        counts = record.get("counts") or {}
+        rows = [
+            ("탐지 시각", local_timestamp(str(record.get("scanned_at", "")))),
+            ("폴더 / UID", f"{record.get('folder', '')} / {record.get('uid', '')}"),
+            ("위험 등급", risk),
+            ("제목(마스킹)", str(record.get("subject", ""))),
+            ("발신자(마스킹)", str(record.get("sender", ""))),
+            ("탐지 항목", ", ".join(record.get("findings") or []) or "없음"),
+        ]
+        if counts:
+            rows.append(("항목별 건수", ", ".join(f"{k}={v}" for k, v in counts.items())))
+        for index, (name, value) in enumerate(rows):
+            ttk.Label(summary, text=name, width=14).grid(row=index, column=0, sticky="w", pady=1)
+            ttk.Label(summary, text=value, wraplength=640, justify="left").grid(row=index, column=1, sticky="w", pady=1)
+
+        attachments = record.get("attachments") or []
+        if attachments:
+            box = ttk.LabelFrame(frame, text=f"첨부파일 {len(attachments)}개", padding=8)
+            box.grid(row=2, column=0, sticky="we", pady=(8, 0))
+            for index, item in enumerate(attachments[:5]):
+                digest = str(item.get("sha256") or "")
+                text = f"{item.get('name', '')}  ({item.get('size', 0):,} bytes)  SHA-256 {digest[:16]}…" if digest else f"{item.get('name', '')}  ({item.get('size', 0):,} bytes)"
+                ttk.Label(box, text=text).grid(row=index, column=0, sticky="w")
+
+        evidence = ttk.LabelFrame(frame, text="원본 근거", padding=8)
+        evidence.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        evidence.rowconfigure(1, weight=1)
+        evidence.columnconfigure(0, weight=1)
+        self.var_status = tk.StringVar(value="'원본에서 근거 확인'을 누르면 메일 서버에서 원본을 읽어 근거를 표시합니다. 원본과 근거는 저장하지 않습니다.")
+        ttk.Label(evidence, textvariable=self.var_status, wraplength=760, justify="left").grid(row=0, column=0, sticky="w")
+        self.text = tk.Text(evidence, wrap="word", height=12, state="disabled")
+        text_scroll = ttk.Scrollbar(evidence, orient="vertical", command=self.text.yview)
+        self.text.configure(yscrollcommand=text_scroll.set)
+        self.text.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
+        text_scroll.grid(row=1, column=1, sticky="ns", pady=(6, 0))
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=3, column=0, sticky="e", pady=(10, 0))
+        self.btn_load = ttk.Button(buttons, text="원본에서 근거 확인", command=self._load)
+        self.btn_load.pack(side="left", padx=4)
+        if self._source is None:
+            self.btn_load.configure(state="disabled")
+            self.var_status.set("계정이 연결되어 있지 않아 원본을 읽을 수 없습니다.")
+        ttk.Button(buttons, text="닫기", command=self.destroy).pack(side="left", padx=4)
+        self.after(50, self._center)
+
+    def _center(self) -> None:
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
+        self.lift()
+
+    def _write(self, body: str) -> None:
+        self.text.configure(state="normal")
+        self.text.delete("1.0", "end")
+        self.text.insert("1.0", body)
+        self.text.configure(state="disabled")
+
+    def _load(self) -> None:
+        if self._loading or self._source is None:
+            return
+        self._loading = True
+        self.btn_load.configure(state="disabled")
+        self.var_status.set("메일 서버에서 원본을 읽는 중...")
+        folder = str(self._record.get("folder", ""))
+        uid = int(self._record.get("uid", 0))
+        source = self._source
+
+        def worker() -> None:
+            try:
+                result = source(folder, uid)
+                self._dispatch(lambda: self._loaded(result, None))
+            except Exception as exception:
+                message = str(exception) or exception.__class__.__name__
+                self._dispatch(lambda: self._loaded(None, message))
+
+        threading.Thread(target=worker, name="incident-evidence", daemon=True).start()
+
+    def _loaded(self, result: "EvidenceResult | None", error: str | None) -> None:
+        if not self.winfo_exists():
+            return
+        self._loading = False
+        self.btn_load.configure(state="normal")
+        if error is not None or result is None:
+            self.var_status.set(f"원본을 읽지 못했습니다: {error}")
+            return
+        message, evidence = result
+        lines = [
+            f"제목   : {message.subject}",
+            f"발신자 : {message.sender}",
+            f"날짜   : {message.date}",
+        ]
+        if message.category:
+            lines.append(f"위치   : 받은편지함 '{message.category}' 탭  (다른 탭을 보고 있으면 목록에 안 보입니다)")
+        if message.labels:
+            lines.append(f"라벨   : {', '.join(message.labels)}")
+        lines.append(f"크기   : {len(message.raw):,} bytes")
+        lines.append("")
+        if not evidence:
+            lines.append("지금 규칙으로 다시 검사하니 탐지 항목이 없습니다.")
+            lines.append("규칙이 개선되어 과거의 오탐이 해소된 경우입니다.")
+        else:
+            lines.append(f"탐지 근거 {len(evidence)}건 (값은 가려서 표시합니다)")
+            for index, item in enumerate(evidence, 1):
+                where = " [링크 안]" if item.in_url else ""
+                lines.append("")
+                lines.append(f"{index}. {item.label} · {self.RISK_LABELS.get(item.risk, item.risk)}{where}")
+                lines.append(f"   값   : {item.masked_value}")
+                lines.append(f"   문맥 : ...{item.context}...")
+        self._write("\n".join(lines))
+        self.var_status.set("원본에서 읽은 결과입니다. 이 내용은 저장되지 않습니다.")
 
 
 def show_about(master: tk.Misc) -> None:

@@ -11,6 +11,7 @@
 - 첨부파일 정적 검사(`threats.py`, 외부 서비스 없음): 매직 바이트로 확장자 위장 실행 파일 탐지, Office 매크로(OOXML `vbaProject.bin`, OLE `_VBA_PROJECT`), HWP 스크립트, ZIP 내부 실행 파일·이중 확장자·중첩 압축·암호 설정·압축 폭탄, PDF JavaScript/Launch, HTML·디스크 이미지·OneNote·LNK 등 전달 형식
 - 랜섬웨어 지표: 랜섬노트 문구(암호화 통보 + 복호화 대가 + 비트코인/Tor + 협박, 복수 신호 결합), 알려진 암호화 확장자(첨부·압축 내부·본문), 전달 경로 요약(매크로 문서, 암호 압축, 실행 파일, 디스크 이미지, LNK). PC 내 대량 암호화 행위 감시는 2단계 서비스 범위
 - Windows Toast 알림(windows-toasts), 클릭 시 최근 위험 메일 창
+- 사건 목록에서 행을 두 번 누르면 탐지 근거 창이 열립니다. 원본 메일을 그때그때 읽어 항목별 문맥(값은 마스킹)과 Gmail 받은편지함 탭·라벨을 보여 주며, 원본과 근거는 저장하지 않습니다. 규칙이 개선된 뒤에는 과거 오탐이 '근거 없음'으로 표시됩니다
 - 계정 설정 창: 이메일 입력 → 공급자 자동 판별(Gmail, Naver, Daum, Outlook 등) → Google 로그인(OAuth) 또는 앱 비밀번호, 연결 테스트
 - 자격증명은 Windows Credential Manager(keyring)에만 저장, 평문 파일 저장 없음
 - 폴더별 IMAP IDLE 감시(INBOX + 보낸편지함 자동 탐색), UIDVALIDITY·마지막 UID 체크포인트로 재시작 시 누락·중복 방지(따라잡기 상한 200건)

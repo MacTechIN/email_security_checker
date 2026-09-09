@@ -240,3 +240,51 @@ def test_strip_urls_preserves_offsets():
     assert len(stripped) == len(text)
     assert "linkedin.com" not in stripped
     assert stripped.startswith("앞 ") and stripped.endswith(" 뒤")
+
+
+# --- 탐지 근거(증거) 추출 ---
+
+def test_explain_reports_context_and_masks_value():
+    [ev] = scanner.explain_text("담당자 연락처는 010-1234-5678 입니다")
+    assert ev.key == "mobile"
+    assert ev.label == "휴대전화번호"
+    assert ev.masked_value == "010" + "*" * 8 + "78"
+    assert "010-1234-5678" not in ev.masked_value
+    assert "담당자 연락처는" in ev.context
+    assert ev.in_url is False
+
+
+def test_explain_keeps_keyword_matches_readable():
+    [ev] = scanner.explain_text("비밀번호 안내드립니다")
+    assert ev.key == "credential"
+    assert ev.masked_value == "비밀번호"
+
+
+def test_explain_agrees_with_scan_text():
+    text = "성명: 박영희 010-1111-2222 / 주민번호 901231-1234567"
+    counts: dict[str, int] = {}
+    for ev in scanner.explain_text(text):
+        counts[ev.key] = counts.get(ev.key, 0) + 1
+    assert counts == scanner.scan_text(text)
+
+
+def test_explain_finds_nothing_in_tracking_url():
+    assert scanner.explain_text(f"확인하세요 {LINKEDIN_URL}") == []
+
+
+def test_explain_message_uses_headers_for_ignored_addresses():
+    raw = _raw("문의", "회신은 partner@other.com 으로 주세요")
+    evidence = scanner.explain_message(raw, own_addresses=("me@example.com",))
+    assert [e.key for e in evidence] == ["email"]
+    assert "partner@other.com" not in evidence[0].masked_value
+
+
+def test_label_followed_by_common_noun_is_not_a_name():
+    """'담당자 연락처는' 처럼 라벨 뒤 일반 명사+조사를 실명으로 보지 않는다."""
+    assert "name" not in scanner.scan_text("담당자 연락처는 010-1234-5678 입니다")
+    assert "name" not in scanner.scan_text("신청자 주소를 확인해 주세요")
+
+
+def test_label_followed_by_real_name_still_detected():
+    for text in ("예금주 홍길동", "담당자 김철수", "담당자 김지은", "성명: 박영희"):
+        assert scanner.scan_text(text).get("name") == 1, text

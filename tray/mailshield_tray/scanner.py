@@ -71,6 +71,19 @@ def _card_valid(match: re.Match) -> bool:
     return 13 <= len(digits) <= 19 and _luhn_valid(digits)
 
 
+# 라벨 뒤에 온 일반 명사를 이름으로 오인하지 않기 위한 조사 목록.
+# 이름에 흔한 '은/이/가'는 제외한다(김지은, 박서이 같은 실제 이름을 놓치지 않도록).
+_NAME_TAIL_PARTICLES = ("는", "를", "을", "에", "의", "와", "과", "도", "만", "요", "서", "게", "께")
+
+
+def _name_valid(value: str) -> bool:
+    """한국 성씨로 시작하고, 조사로 끝나는 일반 명사가 아니어야 이름으로 본다."""
+    if value[:1] not in KOREAN_SURNAMES:
+        return False
+    # '담당자 연락처는', '신청자 주소를'처럼 라벨+명사+조사 형태를 걸러낸다.
+    return not (len(value) >= 3 and value.endswith(_NAME_TAIL_PARTICLES))
+
+
 def _account_valid(match: re.Match) -> bool:
     digits = re.sub(r"\D", "", match.group("number"))
     return 10 <= len(digits) <= 14
@@ -142,7 +155,7 @@ RULES: tuple[Rule, ...] = (
             rf"|(?:(?:{_NAME_LABELS_WEAK})\s*[:：]\s*(?P<n3>[가-힣]{{2,4}})(?![가-힣]))"
             rf"|(?:(?<![가-힣])(?P<n2>[가-힣]{{2,4}})\s?(?:{_NAME_TITLES})(?:님)?(?![가-힣]))"
         ),
-        lambda m: (m.group("n1") or m.group("n3") or m.group("n2") or "")[:1] in KOREAN_SURNAMES,
+        lambda m: _name_valid(m.group("n1") or m.group("n3") or m.group("n2") or ""),
     ),
     Rule(
         "health",
@@ -315,6 +328,70 @@ def scan_text(text: str, ignore_emails: set[str] | None = None) -> dict[str, int
             counts[rule.key] = counts.get(rule.key, 0) + 1
             taken.append(match.span())
     return counts
+
+
+@dataclass
+class Evidence:
+    """탐지 근거 한 건. 값은 가리고 주변 문맥만 보여 준다."""
+
+    key: str
+    label: str
+    risk: str
+    masked_value: str
+    context: str
+    in_url: bool = False
+
+
+def _mask_value(key: str, value: str) -> str:
+    """식별 가능한 값은 가린다. 키워드처럼 값이 아닌 매치는 그대로 보여 준다."""
+    if key in ("credential", "health"):
+        return value
+    if len(value) <= 4:
+        return "*" * len(value)
+    keep_tail = 2 if len(value) > 8 else 1
+    return value[:3] + "*" * (len(value) - 3 - keep_tail) + value[-keep_tail:]
+
+
+def explain_text(text: str, ignore_emails: set[str] | None = None, context_chars: int = 60) -> list[Evidence]:
+    """scan_text와 같은 판정을 하되, 근거로 쓸 문맥을 함께 돌려준다."""
+    ignore_emails = {a.lower() for a in (ignore_emails or set())}
+    url_spans = [m.span() for m in URL_PATTERN.finditer(text)]
+    stripped = strip_urls(text)
+    found: list[Evidence] = []
+    taken: list[Span] = []
+    for rule in RULES:
+        for match in rule.pattern.finditer(stripped):
+            if _overlaps(match.span(), taken):
+                continue
+            if rule.validator is not None and not rule.validator(match):
+                continue
+            if rule.key == "email" and match.group().lower() in ignore_emails:
+                continue
+            taken.append(match.span())
+            start = max(0, match.start() - context_chars)
+            end = min(len(text), match.end() + context_chars)
+            # 문맥은 URL을 지우기 전 원문에서 잘라야 사용자가 위치를 알아볼 수 있다.
+            context = " ".join(text[start:end].split())
+            found.append(
+                Evidence(
+                    key=rule.key,
+                    label=rule.label,
+                    risk=rule.risk,
+                    masked_value=_mask_value(rule.key, match.group()),
+                    context=context,
+                    in_url=any(s <= match.start() < e for s, e in url_spans),
+                )
+            )
+    return found
+
+
+def explain_message(raw_message: bytes, own_addresses: Iterable[str] = ()) -> list[Evidence]:
+    """원본 메일에서 개인정보 탐지 근거를 뽑는다. 저장하지 않고 화면 표시용으로만 쓴다."""
+    message = email.message_from_bytes(raw_message, policy=policy.default)
+    subject = decode_header_value(message.get("Subject"))
+    text = f"{subject}\n{extract_text(message)}"
+    ignore = _participants(message) | {a.lower() for a in own_addresses}
+    return explain_text(text, ignore)
 
 
 def _format_findings(counts: dict[str, int]) -> list[str]:

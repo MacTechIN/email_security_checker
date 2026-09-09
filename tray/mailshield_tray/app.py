@@ -19,9 +19,10 @@ from .monitor import (
     STATUS_STOPPED,
     STATUS_WATCHING,
     Monitor,
+    fetch_message,
 )
 from .notify import Notifier
-from .scanner import ScanResult
+from .scanner import ScanResult, explain_message
 from .store import CheckpointStore, IncidentLog, Settings
 from .ui import dialogs, icons
 from .ui.tray import TrayIcon
@@ -202,7 +203,15 @@ class App:
             self._incidents_window.lift()
             self._incidents_window.focus_force()
             return
-        self._incidents_window = dialogs.IncidentsWindow(self.root, self.incidents)
+        self._incidents_window = dialogs.IncidentsWindow(self.root, self.incidents, self._load_evidence, self.dispatch)
+
+    def _load_evidence(self, folder: str, uid: int):
+        """사건 상세 창이 워커 스레드에서 호출한다. 원본은 화면 표시 후 버린다."""
+        if not self.settings.account.configured:
+            raise RuntimeError("계정이 연결되어 있지 않습니다.")
+        authenticator = Authenticator(self.settings.account, self.store, self.oauth)
+        message = fetch_message(self.settings, authenticator, folder, uid)
+        return message, explain_message(message.raw, own_addresses=(self.settings.account.email,))
 
     def open_logs(self) -> None:
         try:

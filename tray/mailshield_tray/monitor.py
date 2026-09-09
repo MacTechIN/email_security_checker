@@ -22,7 +22,7 @@ from imapclient import IMAPClient
 from imapclient.exceptions import LoginError
 
 from .auth import AuthError, Authenticator
-from .scanner import ScanResult, scan_message
+from .scanner import ScanResult, decode_header_value, scan_message
 from .store import FOLDER_AUTO_SENT, CheckpointStore, Settings
 
 log = logging.getLogger(__name__)
@@ -98,6 +98,79 @@ def test_connection(settings: Settings, authenticator: Authenticator) -> Connect
         return ConnectionReport(False, f"네트워크/TLS 연결 실패: {exception}")
     except Exception as exception:  # 예상하지 못한 IMAP 오류
         return ConnectionReport(False, f"연결 실패: {exception}")
+    finally:
+        if client is not None:
+            try:
+                client.logout()
+            except Exception:
+                pass
+
+
+@dataclass
+class FetchedMessage:
+    """사건 상세 화면에서 근거를 보여 주기 위해 그때그때 읽어 오는 원본 메일."""
+
+    raw: bytes
+    subject: str
+    sender: str
+    date: str
+    labels: tuple[str, ...] = ()
+    category: str = ""  # Gmail 받은편지함 탭(기본/소셜/프로모션/알림/포럼)
+
+
+GMAIL_CATEGORIES = (("primary", "기본"), ("social", "소셜"), ("promotions", "프로모션"), ("updates", "알림"), ("forums", "포럼"))
+
+
+def gmail_category(client: IMAPClient, uid: int) -> str:
+    """Gmail 받은편지함 탭을 알아낸다. 탭은 라벨로 노출되지 않아 따로 조회해야 한다.
+
+    기본 탭만 보는 사용자는 소셜·프로모션 탭의 메일을 '없는 메일'로 오해하기 쉽다.
+    """
+    try:
+        if not client.has_capability("X-GM-EXT-1"):
+            return ""
+        for key, label in GMAIL_CATEGORIES:
+            if uid in client.search(["UID", str(uid), "X-GM-RAW", f"category:{key}"]):
+                return label
+    except Exception:
+        log.debug("Gmail 카테고리 조회 실패", exc_info=True)
+    return ""
+
+
+def fetch_message(settings: Settings, authenticator: Authenticator, folder: str, uid: int) -> FetchedMessage:
+    """지정한 폴더의 UID 한 통을 읽기 전용으로 가져온다. 없으면 LookupError."""
+    import email as email_module
+    from email import policy as email_policy
+
+    account = settings.account
+    client: IMAPClient | None = None
+    try:
+        client = IMAPClient(account.imap_host, port=account.imap_port, ssl=True, ssl_context=ssl.create_default_context(), timeout=30)
+        authenticator.login(client)
+        name = find_sent_folder(client) if folder == FOLDER_AUTO_SENT else folder
+        if not name:
+            raise LookupError("보낸편지함 폴더를 찾지 못했습니다.")
+        client.select_folder(name, readonly=True)
+        parts = [b"RFC822"]
+        if client.has_capability("X-GM-EXT-1"):
+            parts.append(b"X-GM-LABELS")
+        fetched = client.fetch([uid], parts).get(uid) or {}
+        raw = fetched.get(b"RFC822")
+        if not raw:
+            raise LookupError("메일이 서버에 없습니다. 삭제되었거나 다른 폴더로 옮겨졌습니다.")
+        labels = tuple(
+            item.decode("utf-8", errors="replace") if isinstance(item, bytes) else str(item)
+            for item in (fetched.get(b"X-GM-LABELS") or ())
+        )
+        message = email_module.message_from_bytes(raw, policy=email_policy.default)
+        return FetchedMessage(
+            raw=raw,
+            subject=decode_header_value(message.get("Subject")),
+            sender=decode_header_value(message.get("From")),
+            date=decode_header_value(message.get("Date")),
+            labels=labels,
+            category=gmail_category(client, uid),
+        )
     finally:
         if client is not None:
             try:
