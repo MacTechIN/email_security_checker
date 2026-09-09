@@ -13,6 +13,7 @@ from .. import APP_DISPLAY_NAME, VERSION
 from .. import autostart, providers
 from ..auth import AuthError, Authenticator, CredentialStore, GoogleOAuth
 from ..monitor import test_connection
+from ..scanner import local_timestamp, local_timezone_label
 from ..store import AUTH_APP_PASSWORD, AUTH_OAUTH, FOLDER_AUTO_SENT, AccountSettings, IncidentLog, Settings
 
 Dispatch = Callable[[Callable[[], None]], None]  # 워커 스레드 → UI 스레드
@@ -327,7 +328,7 @@ class IncidentsWindow(tk.Toplevel):
         self._incidents = incidents
         columns = ("time", "folder", "risk", "subject", "findings")
         self.tree = ttk.Treeview(self, columns=columns, show="headings")
-        headings = {"time": ("시각(UTC)", 150), "folder": ("폴더", 120), "risk": ("위험", 50), "subject": ("제목(마스킹)", 160), "findings": ("탐지 내용", 260)}
+        headings = {"time": (f"시각({local_timezone_label()})", 150), "folder": ("폴더", 120), "risk": ("위험", 50), "subject": ("제목(마스킹)", 160), "findings": ("탐지 내용", 260)}
         for key, (text, width) in headings.items():
             self.tree.heading(key, text=text)
             self.tree.column(key, width=width, anchor="w")
@@ -353,7 +354,7 @@ class IncidentsWindow(tk.Toplevel):
                 "",
                 "end",
                 values=(
-                    str(item.get("scanned_at", ""))[:19].replace("T", " "),
+                    local_timestamp(str(item.get("scanned_at", ""))),
                     item.get("folder", ""),
                     {"high": "높음", "medium": "주의"}.get(item.get("risk"), "정상"),
                     item.get("subject", ""),

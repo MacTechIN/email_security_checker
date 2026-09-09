@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from email.message import EmailMessage
 
 import pytest
@@ -157,3 +158,42 @@ def test_raw_values_never_stored(value):
     result = _scan(f"값 {value}")
     dumped = str(result.to_dict())
     assert value not in dumped
+
+# --- 시각 표기(로컬 시간) ---
+
+def test_scanned_at_carries_local_offset():
+    result = _scan("정상 본문")
+    parsed = datetime.fromisoformat(result.scanned_at)
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() == datetime.now().astimezone().utcoffset()
+
+
+def test_local_timestamp_converts_old_utc_records():
+    # 0.1.5 이전 기록은 UTC로 저장됐다. KST(+09:00) PC에서는 9시간 뒤로 보여야 한다.
+    converted = scanner.local_timestamp("2026-09-09T10:25:59+00:00")
+    expected = datetime(2026, 9, 9, 10, 25, 59, tzinfo=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    assert converted == expected
+
+
+def test_local_timestamp_converts_offset_records_to_same_instant():
+    value = "2026-09-09T19:31:31+09:00"
+    expected = datetime.fromisoformat(value).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    assert scanner.local_timestamp(value) == expected
+
+
+def test_local_timestamp_treats_naive_value_as_utc():
+    naive = scanner.local_timestamp("2026-09-09T10:00:00")
+    assert naive == datetime(2026, 9, 9, 10, 0, 0, tzinfo=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def test_local_timestamp_tolerates_bad_input():
+    assert scanner.local_timestamp("") == ""
+    assert scanner.local_timestamp("not-a-time") == "not-a-time"
+
+
+def test_local_timezone_label_matches_offset():
+    offset = datetime.now().astimezone().utcoffset()
+    minutes = round(offset.total_seconds() / 60)
+    hours, remainder = divmod(abs(minutes), 60)
+    expected = f"UTC{'-' if minutes < 0 else '+'}{hours}" + (f":{remainder:02d}" if remainder else "")
+    assert scanner.local_timezone_label() == expected

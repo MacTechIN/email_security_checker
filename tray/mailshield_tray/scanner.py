@@ -11,7 +11,7 @@ import email
 import hashlib
 import re
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email import policy
 from email.header import decode_header
 from email.utils import getaddresses
@@ -164,7 +164,8 @@ class ScanResult:
     attachments: list[Attachment] = field(default_factory=list)
     risk: str = RISK_SAFE
     counts: dict[str, int] = field(default_factory=dict)
-    scanned_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    # 로컬 시간대(한국이면 +09:00) 오프셋을 포함해 저장한다. 표시는 local_timestamp()를 쓴다.
+    scanned_at: str = field(default_factory=lambda: datetime.now().astimezone().isoformat(timespec="seconds"))
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -181,6 +182,31 @@ class ScanResult:
 # ---------------------------------------------------------------------------
 # 도우미
 # ---------------------------------------------------------------------------
+
+
+def local_timestamp(value: str) -> str:
+    """저장된 ISO 8601 시각을 로컬 시간(한국이면 KST) 문자열로 바꾼다.
+
+    0.1.5 이전에 UTC로 기록된 사건도 함께 변환한다.
+    """
+    if not value:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return value[:19].replace("T", " ")
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)  # 예전 기록은 UTC로 저장했다
+    return parsed.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def local_timezone_label() -> str:
+    """표 머리글에 쓸 현재 시간대 표기. 한국이면 'UTC+9'."""
+    offset = datetime.now().astimezone().utcoffset() or timedelta(0)
+    minutes = round(offset.total_seconds() / 60)
+    sign = "-" if minutes < 0 else "+"
+    hours, remainder = divmod(abs(minutes), 60)
+    return f"UTC{sign}{hours}" + (f":{remainder:02d}" if remainder else "")
 
 
 def decode_header_value(value: str | None) -> str:
