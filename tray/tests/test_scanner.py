@@ -323,3 +323,30 @@ def test_evidence_masks_only_the_value_not_the_label():
     assert ev.label == "실명"
     assert ev.context.startswith("예금주 ")
     assert "홍길동" not in ev.context
+
+
+# --- 당시 규칙 재현(0.1.6 이전) ---
+
+def test_legacy_explain_reproduces_url_matches_that_current_rules_ignore():
+    text = f"게시물 확인 {LINKEDIN_URL}"
+    assert scanner.explain_text(text) == []
+    legacy = scanner.explain_legacy_text(text)
+    keys = sorted(e.key for e in legacy)
+    assert "card" in keys and "credential" in keys
+    assert all(e.in_url for e in legacy)
+    cred = [e for e in legacy if e.key == "credential"]
+    assert cred and cred[0].masked_value.lower() == "otp"
+    assert "7501708252628275200" not in "".join(e.context for e in legacy if e.key == "card")
+
+
+def test_legacy_explain_keeps_current_hits_and_marks_link_position():
+    text = "연락처 010-1234-5678 " + LINKEDIN_URL
+    legacy = scanner.explain_legacy_text(text)
+    mobile = [e for e in legacy if e.key == "mobile"]
+    assert mobile and mobile[0].in_url is False
+
+
+def test_explain_message_legacy_flag():
+    raw = _raw("확인", f"내용 {LINKEDIN_URL}")
+    assert scanner.explain_message(raw, own_addresses=("me@example.com",)) == []
+    assert scanner.explain_message(raw, own_addresses=("me@example.com",), legacy=True)

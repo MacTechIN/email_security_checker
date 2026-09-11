@@ -340,6 +340,11 @@ class Evidence:
     risk: str
     masked_value: str
     context: str
+    in_url: bool = False  # 링크 안 문자열에서 매치됨(옛 규칙 재현에서만 True가 될 수 있다)
+
+
+# 0.1.6 이전 인증정보 키워드 규칙(단어 경계 없음). 과거 판정을 재현할 때만 쓴다.
+_LEGACY_CREDENTIAL = re.compile(r"(?i)(password|passwd|pwd\s*[:=]|비밀번호|패스워드|인증번호|otp|api[_ -]?key|secret[_ -]?key|access[_ -]?token|공인인증서|보안카드)")
 
 
 def _value_span(match: re.Match) -> Span:
@@ -364,13 +369,20 @@ def _mask_value(key: str, value: str) -> str:
     return value[:3] + "*" * (len(value) - 3 - keep_tail) + value[-keep_tail:]
 
 
-def explain_text(text: str, ignore_emails: set[str] | None = None, context_chars: int = 60) -> list[Evidence]:
+def explain_text(
+    text: str,
+    ignore_emails: set[str] | None = None,
+    context_chars: int = 60,
+    include_urls: bool = False,
+) -> list[Evidence]:
     """scan_text와 같은 판정을 하되, 근거로 쓸 문맥을 함께 돌려준다.
 
     문맥에는 탐지된 값이 그대로 남지 않는다. 근처의 다른 탐지값도 함께 가린다.
+    include_urls=True면 링크를 지우지 않고 검사한다(0.1.6 이전 동작 재현용).
     """
     ignore_emails = {a.lower() for a in (ignore_emails or set())}
-    stripped = strip_urls(text)
+    url_spans = [m.span() for m in URL_PATTERN.finditer(text)]
+    stripped = text if include_urls else strip_urls(text)
     hits: list[tuple[Rule, Span, Span, str]] = []
     taken: list[Span] = []
     for rule in RULES:
@@ -402,18 +414,49 @@ def explain_text(text: str, ignore_emails: set[str] | None = None, context_chars
                 risk=rule.risk,
                 masked_value=masked,
                 context=" ".join(masked_text[left:right].split()),
+                in_url=any(u_start <= start < u_end for u_start, u_end in url_spans),
             )
         )
     return found
 
 
-def explain_message(raw_message: bytes, own_addresses: Iterable[str] = ()) -> list[Evidence]:
-    """원본 메일에서 개인정보 탐지 근거를 뽑는다. 저장하지 않고 화면 표시용으로만 쓴다."""
+def explain_legacy_text(text: str, ignore_emails: set[str] | None = None, context_chars: int = 60) -> list[Evidence]:
+    """0.1.6 이전 규칙으로 판정 근거를 재현한다.
+
+    당시에는 링크를 지우지 않았고 영문 인증정보 키워드에 단어 경계가 없었다.
+    과거 사건 기록이 지금 규칙으로는 재현되지 않을 때 '왜 잡혔는지' 보여 주기 위한 것이다.
+    """
+    found = explain_text(text, ignore_emails, context_chars, include_urls=True)
+    for match in _LEGACY_CREDENTIAL.finditer(text):
+        # 지금 규칙(단어 경계)으로 잡히는 매치는 위 결과에 이미 있으므로 건너뛴다.
+        if _RULE_BY_KEY["credential"].pattern.match(text, match.start()):
+            continue
+        left = max(0, match.start() - context_chars)
+        right = min(len(text), match.end() + context_chars)
+        context = " ".join(text[left:right].split())
+        found.append(
+            Evidence(
+                key="credential",
+                label="인증정보 키워드(단어 일부 일치)",
+                risk=RISK_HIGH,
+                masked_value=match.group(),
+                context=context,
+                in_url=any(u.start() <= match.start() < u.end() for u in URL_PATTERN.finditer(text)),
+            )
+        )
+    return found
+
+
+def explain_message(raw_message: bytes, own_addresses: Iterable[str] = (), legacy: bool = False) -> list[Evidence]:
+    """원본 메일에서 개인정보 탐지 근거를 뽑는다. 저장하지 않고 화면 표시용으로만 쓴다.
+
+    legacy=True면 0.1.6 이전 규칙(링크 포함, 단어 경계 없음)으로 재현한다.
+    """
     message = email.message_from_bytes(raw_message, policy=policy.default)
     subject = decode_header_value(message.get("Subject"))
     text = f"{subject}\n{extract_text(message)}"
     ignore = _participants(message) | {a.lower() for a in own_addresses}
-    return explain_text(text, ignore)
+    return explain_legacy_text(text, ignore) if legacy else explain_text(text, ignore)
 
 
 def _format_findings(counts: dict[str, int]) -> list[str]:

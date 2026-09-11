@@ -211,7 +211,11 @@ class App:
             raise RuntimeError("계정이 연결되어 있지 않습니다.")
         authenticator = Authenticator(self.settings.account, self.store, self.oauth)
         message = fetch_message(self.settings, authenticator, folder, uid)
-        return message, explain_message(message.raw, own_addresses=(self.settings.account.email,))
+        own = (self.settings.account.email,)
+        current = explain_message(message.raw, own_addresses=own)
+        # 지금 규칙으로 근거가 없으면 당시 규칙(0.1.6 이전)으로 재현해 '왜 잡혔는지' 보여 준다.
+        legacy = [] if current else explain_message(message.raw, own_addresses=own, legacy=True)
+        return message, current, legacy
 
     def open_logs(self) -> None:
         try:

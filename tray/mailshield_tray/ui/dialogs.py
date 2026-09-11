@@ -17,8 +17,8 @@ from ..scanner import Evidence, local_timestamp, local_timezone_label
 from ..store import AUTH_APP_PASSWORD, AUTH_OAUTH, FOLDER_AUTO_SENT, AccountSettings, IncidentLog, Settings
 
 Dispatch = Callable[[Callable[[], None]], None]  # 워커 스레드 → UI 스레드
-# (폴더, UID) -> (원본 메일, 탐지 근거). 워커 스레드에서 호출한다.
-EvidenceResult = tuple[FetchedMessage, list[Evidence]]
+# (폴더, UID) -> (원본 메일, 지금 규칙 근거, 당시 규칙 재현 근거). 워커 스레드에서 호출한다.
+EvidenceResult = tuple[FetchedMessage, list[Evidence], list[Evidence]]
 EvidenceSource = Callable[[str, int], EvidenceResult]
 
 
@@ -512,7 +512,7 @@ class IncidentDetailWindow(tk.Toplevel):
         if error is not None or result is None:
             self.var_status.set(f"원본을 읽지 못했습니다: {error}")
             return
-        message, evidence = result
+        message, evidence, legacy = result
         lines = [
             f"제목   : {message.subject}",
             f"발신자 : {message.sender}",
@@ -527,6 +527,17 @@ class IncidentDetailWindow(tk.Toplevel):
         if not evidence:
             lines.append("지금 규칙으로 다시 검사하니 탐지 항목이 없습니다.")
             lines.append("규칙이 개선되어 과거의 오탐이 해소된 경우입니다.")
+            if legacy:
+                in_link = sum(1 for item in legacy if item.in_url)
+                lines.append("")
+                lines.append(f"당시 판정 재현(0.1.6 이전 규칙) {len(legacy)}건, 그중 링크 안 {in_link}건")
+                lines.append("당시에는 링크 안 문자열도 검사했고 영문 키워드에 단어 경계가 없었습니다.")
+                for index, item in enumerate(legacy, 1):
+                    where = " [링크 안]" if item.in_url else ""
+                    lines.append("")
+                    lines.append(f"{index}. {item.label} · {self.RISK_LABELS.get(item.risk, item.risk)}{where}")
+                    lines.append(f"   값   : {item.masked_value}")
+                    lines.append(f"   문맥 : ...{item.context}...")
         else:
             lines.append(f"탐지 근거 {len(evidence)}건 (값은 가려서 표시합니다)")
             for index, item in enumerate(evidence, 1):
