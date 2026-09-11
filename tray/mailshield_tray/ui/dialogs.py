@@ -549,6 +549,260 @@ class IncidentDetailWindow(tk.Toplevel):
         self.var_status.set("원본에서 읽은 결과입니다. 이 내용은 저장되지 않습니다.")
 
 
+class SetupWizard(tk.Toplevel):
+    """처음 설정 마법사. 설치기가 설치 직후, 또는 계정이 없을 때 자동으로 연다.
+
+    Google 2단계 인증과 앱 비밀번호 발급은 API가 없어 자동화할 수 없다. 대신 입력한 이메일 계정으로
+    해당 페이지를 정확히 열어 주고 실제 화면 기준 단계를 옆에 보여 준다. 사용자가 완료를 표시하고
+    앱 비밀번호를 붙여 넣으면 연결을 검사하고, 통과했을 때만 설정을 저장하고 감시를 시작한다.
+    """
+
+    GOOGLE_2SV = "https://myaccount.google.com/signinoptions/twosv"
+    GOOGLE_APP_PW = "https://myaccount.google.com/apppasswords"
+
+    STEP_2SV = (
+        "열린 화면에서 '2단계 인증'을 켭니다.",
+        "  · 이미 '사용 중'이고 아래에 Passkeys·Google 프롬프트·인증 앱·전화번호 같은 '2차 단계'가 보이면 켜진 것입니다.",
+        "  · 꺼져 있으면 '2단계 인증 사용' → 전화번호 또는 인증 앱 등록 → 확인 코드 입력 → 완료.",
+    )
+    STEP_APP_PW = (
+        "열린 화면 '앱 비밀번호'에서:",
+        "  · '앱 이름' 입력란에  MailShield  를 입력하고 '만들기'를 누릅니다.",
+        "  · 노란 상자에 나오는 16자리 문자를 복사합니다(공백 포함 상관없음). 이 창을 닫으면 다시 볼 수 없습니다.",
+        "  · 페이지가 안 열리거나 '사용할 수 없음'이면 2단계 인증이 아직 꺼진 것입니다. 1단계로 돌아가십시오.",
+    )
+
+    def __init__(
+        self,
+        master: tk.Misc,
+        settings: Settings,
+        store: CredentialStore,
+        oauth: GoogleOAuth,
+        dispatch: Dispatch,
+        on_saved: Callable[[Settings], None],
+        on_open_settings: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__(master)
+        self.title(f"{APP_DISPLAY_NAME} - 처음 설정")
+        self.resizable(False, False)
+        self.attributes("-topmost", True)
+        self._settings = settings
+        self._store = store
+        self._oauth = oauth
+        self._dispatch = dispatch
+        self._on_saved = on_saved
+        self._on_open_settings = on_open_settings
+        self._verified: Settings | None = None
+        self._busy = False
+
+        self.var_email = tk.StringVar(value=settings.account.email)
+        self.var_provider = tk.StringVar(value="")
+        self.var_done_2sv = tk.BooleanVar(value=False)
+        self.var_done_pw = tk.BooleanVar(value=False)
+        self.var_password = tk.StringVar(value="")
+        self.var_pw_hint = tk.StringVar(value="")
+        self.var_status = tk.StringVar(value="")
+        self._build()
+        self._refresh()
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self.after(50, self._center)
+
+    # --- 레이아웃 ---
+    def _build(self) -> None:
+        f = ttk.Frame(self, padding=14)
+        f.grid(row=0, column=0, sticky="nsew")
+        f.columnconfigure(1, weight=1)
+        ttk.Label(f, text="MailShield Tray 처음 설정", font=("", 12, "bold")).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        ttk.Label(f, text="아래 순서대로 진행하면 설정이 끝납니다. 메일은 이 PC 안에서만 검사하며 비밀번호는 Windows 자격 증명 관리자에만 저장됩니다.", wraplength=680, foreground="#555").grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 10))
+
+        # A. 이메일
+        ttk.Label(f, text="A. 이메일 주소").grid(row=2, column=0, sticky="w", pady=3)
+        entry = ttk.Entry(f, textvariable=self.var_email, width=42)
+        entry.grid(row=2, column=1, sticky="w", pady=3)
+        entry.bind("<KeyRelease>", lambda _e: self._refresh())
+        ttk.Label(f, textvariable=self.var_provider, foreground="#555").grid(row=3, column=1, columnspan=2, sticky="w")
+
+        # B. 단계 안내
+        self.box_steps = ttk.LabelFrame(f, text="B. 메일 계정에서 준비할 것 (버튼을 누르면 해당 계정의 페이지가 열립니다)", padding=8)
+        self.box_steps.grid(row=4, column=0, columnspan=3, sticky="we", pady=(10, 4))
+        self.box_steps.columnconfigure(1, weight=1)
+        self.btn_2sv = ttk.Button(self.box_steps, text="① 2단계 인증 페이지 열기", command=self._open_2sv, width=26)
+        self.btn_2sv.grid(row=0, column=0, sticky="nw", padx=(0, 8), pady=2)
+        self.lbl_2sv = ttk.Label(self.box_steps, text="\n".join(self.STEP_2SV), justify="left", wraplength=470)
+        self.lbl_2sv.grid(row=0, column=1, sticky="w", pady=2)
+        self.chk_2sv = ttk.Checkbutton(self.box_steps, text="완료", variable=self.var_done_2sv, command=self._refresh)
+        self.chk_2sv.grid(row=0, column=2, sticky="ne", padx=(8, 0))
+        self.btn_pw = ttk.Button(self.box_steps, text="② 앱 비밀번호 페이지 열기", command=self._open_app_pw, width=26)
+        self.btn_pw.grid(row=1, column=0, sticky="nw", padx=(0, 8), pady=(8, 2))
+        self.lbl_pw = ttk.Label(self.box_steps, text="\n".join(self.STEP_APP_PW), justify="left", wraplength=470)
+        self.lbl_pw.grid(row=1, column=1, sticky="w", pady=(8, 2))
+        self.chk_pw = ttk.Checkbutton(self.box_steps, text="완료", variable=self.var_done_pw, command=self._refresh)
+        self.chk_pw.grid(row=1, column=2, sticky="ne", padx=(8, 0), pady=(8, 0))
+
+        # C. 붙여넣기
+        ttk.Label(f, text="C. 앱 비밀번호 붙여넣기").grid(row=5, column=0, sticky="w", pady=(10, 3))
+        self.ent_pw = ttk.Entry(f, textvariable=self.var_password, show="•", width=32)
+        self.ent_pw.grid(row=5, column=1, sticky="w", pady=(10, 3))
+        self.ent_pw.bind("<KeyRelease>", lambda _e: self._refresh())
+        ttk.Label(f, textvariable=self.var_pw_hint, foreground="#555").grid(row=6, column=1, columnspan=2, sticky="w")
+
+        # D. 검사·설치
+        ttk.Label(f, textvariable=self.var_status, wraplength=680, justify="left", foreground="#1a5e20").grid(row=7, column=0, columnspan=3, sticky="w", pady=(10, 4))
+        buttons = ttk.Frame(f)
+        buttons.grid(row=8, column=0, columnspan=3, sticky="e", pady=(6, 0))
+        self.btn_check = ttk.Button(buttons, text="D. 설정 검사", command=self._check)
+        self.btn_check.pack(side="left", padx=4)
+        self.btn_install = ttk.Button(buttons, text="E. 설치 완료(적용)", command=self._install, state="disabled")
+        self.btn_install.pack(side="left", padx=4)
+        if self._on_open_settings is not None:
+            ttk.Button(buttons, text="상세 설정 창...", command=self._open_settings_instead).pack(side="left", padx=4)
+        ttk.Button(buttons, text="나중에", command=self.destroy).pack(side="left", padx=4)
+
+    def _center(self) -> None:
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
+        self.lift()
+        self.focus_force()
+
+    # --- 상태 ---
+    def _email(self) -> str:
+        return self.var_email.get().strip()
+
+    def _provider(self):
+        return providers.detect(self._email())
+
+    def _is_gmail(self) -> bool:
+        provider = self._provider()
+        return bool(provider and provider.key == "gmail")
+
+    def _password_ok(self) -> bool:
+        raw = self.var_password.get().replace(" ", "").replace("-", "")
+        if self._is_gmail():
+            return len(raw) == 16 and raw.isalpha()
+        return len(raw) >= 4
+
+    def _refresh(self) -> None:
+        email = self._email()
+        provider = self._provider()
+        has_email = "@" in email and "." in email.rsplit("@", 1)[-1]
+        if provider:
+            self.var_provider.set(f"공급자: {provider.display} (IMAP {provider.imap_host})")
+        elif has_email:
+            self.var_provider.set(f"공급자: 알 수 없음. IMAP 서버 {providers.guess_host(email)} 로 시도합니다.")
+        else:
+            self.var_provider.set("")
+        for widget in (self.btn_2sv, self.btn_pw, self.chk_2sv, self.chk_pw):
+            widget.configure(state="normal" if has_email else "disabled")
+        if provider and not self._is_gmail():
+            self.lbl_2sv.configure(text=f"{provider.display} 계정 설정에서 IMAP 사용을 켭니다.")
+            self.lbl_pw.configure(text=f"{provider.display} 계정 설정에서 IMAP용 비밀번호(또는 앱 비밀번호)를 발급받아 복사합니다.")
+        else:
+            self.lbl_2sv.configure(text="\n".join(self.STEP_2SV))
+            self.lbl_pw.configure(text="\n".join(self.STEP_APP_PW))
+        raw = self.var_password.get().replace(" ", "").replace("-", "")
+        if not raw:
+            self.var_pw_hint.set("16자리 앱 비밀번호를 붙여 넣으십시오." if self._is_gmail() else "발급받은 비밀번호를 입력하십시오.")
+        elif self._password_ok():
+            self.var_pw_hint.set("형식 확인됨")
+        else:
+            self.var_pw_hint.set(f"Gmail 앱 비밀번호는 영문 16자리입니다(현재 {len(raw)}자). 일반 계정 비밀번호가 아닙니다.")
+        ready = has_email and self.var_done_2sv.get() and self.var_done_pw.get() and self._password_ok() and not self._busy
+        self.btn_check.configure(state="normal" if ready else "disabled")
+        if self._verified is None:
+            self.btn_install.configure(state="disabled")
+
+    def _open_2sv(self) -> None:
+        from urllib.parse import quote
+
+        if self._is_gmail():
+            webbrowser.open(f"{self.GOOGLE_2SV}?authuser={quote(self._email())}")
+        else:
+            provider = self._provider()
+            webbrowser.open(provider.help_url if provider and provider.help_url else f"https://{self._email().rsplit('@', 1)[-1]}")
+
+    def _open_app_pw(self) -> None:
+        from urllib.parse import quote
+
+        if self._is_gmail():
+            webbrowser.open(f"{self.GOOGLE_APP_PW}?authuser={quote(self._email())}")
+        else:
+            self._open_2sv()
+
+    def _open_settings_instead(self) -> None:
+        if self._on_open_settings is not None:
+            self._on_open_settings()
+        self.destroy()
+
+    # --- 검사·설치 ---
+    def _collect(self) -> Settings:
+        email = self._email()
+        provider = self._provider()
+        account = AccountSettings(
+            email=email,
+            imap_host=provider.imap_host if provider else providers.guess_host(email),
+            imap_port=provider.imap_port if provider else 993,
+            auth_method=AUTH_APP_PASSWORD,
+            folders=["INBOX", FOLDER_AUTO_SENT],
+            provider=provider.key if provider else "",
+        )
+        return Settings(
+            account=account,
+            autostart=True,
+            notify_safe_mail=self._settings.notify_safe_mail,
+            notify_medium_mail=self._settings.notify_medium_mail,
+            idle_timeout_seconds=self._settings.idle_timeout_seconds,
+            catch_up_limit=self._settings.catch_up_limit,
+        )
+
+    def _check(self) -> None:
+        settings = self._collect()
+        self._busy = True
+        self._verified = None
+        self._refresh()
+        self.var_status.set("메일 서버에 연결해 받은편지함과 보낸편지함 접근을 검사하는 중...")
+        authenticator = Authenticator(settings.account, _OverrideStore(self.var_password.get()), self._oauth)
+
+        def worker() -> None:
+            report = test_connection(settings, authenticator)
+            self._dispatch(lambda: self._checked(settings, report.ok, report.message))
+
+        threading.Thread(target=worker, name="setup-check", daemon=True).start()
+
+    def _checked(self, settings: Settings, ok: bool, message: str) -> None:
+        if not self.winfo_exists():
+            return
+        self._busy = False
+        if ok:
+            self._verified = settings
+            self.var_status.set(f"✔ 검사 통과: {message}\n'설치 완료(적용)'을 누르면 설정을 저장하고 Windows 시작 시 자동 실행을 등록한 뒤 감시를 시작합니다.")
+            self.btn_install.configure(state="normal")
+        else:
+            self.var_status.set(f"✘ 검사 실패: {message}\n앱 비밀번호를 다시 발급해 붙여 넣거나, 2단계 인증이 켜져 있는지 확인하십시오.")
+        self._refresh()
+
+    def _install(self) -> None:
+        settings = self._verified
+        if settings is None:
+            return
+        try:
+            self._store.set_app_password(settings.account.email, self.var_password.get())
+        except Exception as exception:
+            self.var_status.set(f"자격증명 저장 실패: {exception}")
+            return
+        settings.save()
+        try:
+            autostart.apply(True)
+        except OSError as exception:
+            messagebox.showwarning(APP_DISPLAY_NAME, f"자동 시작 등록에 실패했습니다: {exception}", parent=self)
+        self._on_saved(settings)
+        self.var_status.set("✔ 설정 완료. 트레이 아이콘이 초록색으로 바뀌면 감시 중입니다. 이 창은 닫아도 됩니다.")
+        self.btn_install.configure(state="disabled")
+        self.btn_check.configure(state="disabled")
+        self.ent_pw.delete(0, "end")
+
+
 def show_about(master: tk.Misc) -> None:
     messagebox.showinfo(
         APP_DISPLAY_NAME,

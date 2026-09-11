@@ -7,4 +7,4 @@
 
 APP_NAME = "MailShield"
 APP_DISPLAY_NAME = "MailShield Tray"
-VERSION = "0.1.0"
+VERSION = "0.1.10"

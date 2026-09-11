@@ -57,7 +57,7 @@ class UiDispatcher:
 
 
 class App:
-    def __init__(self, open_settings_on_start: bool = False) -> None:
+    def __init__(self, open_settings_on_start: bool = False, open_setup_on_start: bool = False) -> None:
         self.root = tk.Tk()
         self.root.withdraw()
         self.root.title(APP_DISPLAY_NAME)
@@ -76,6 +76,7 @@ class App:
         self._monitor: Monitor | None = None
         self._settings_dialog: dialogs.AccountDialog | None = None
         self._incidents_window: dialogs.IncidentsWindow | None = None
+        self._setup_wizard: dialogs.SetupWizard | None = None
 
         self.tray = TrayIcon(
             get_state=self.current_state,
@@ -90,7 +91,9 @@ class App:
             on_about=lambda: self.dispatch(lambda: dialogs.show_about(self.root)),
             on_quit=lambda: self.dispatch(self.quit),
         )
-        self._open_settings_on_start = open_settings_on_start or not self.settings.account.configured
+        # 처음 실행(계정 미설정)이나 설치기 호출(--setup)은 마법사, --settings는 기존 설정 창.
+        self._open_setup_on_start = open_setup_on_start or not self.settings.account.configured
+        self._open_settings_on_start = open_settings_on_start and not self._open_setup_on_start
 
     # --- 상태 ---
     def current_state(self) -> str:
@@ -190,6 +193,13 @@ class App:
             return
         self._settings_dialog = dialogs.AccountDialog(self.root, self.settings, self.store, self.oauth, self.dispatch, self._on_settings_saved)
 
+    def open_setup(self) -> None:
+        if self._setup_wizard is not None and self._setup_wizard.winfo_exists():
+            self._setup_wizard.lift()
+            self._setup_wizard.focus_force()
+            return
+        self._setup_wizard = dialogs.SetupWizard(self.root, self.settings, self.store, self.oauth, self.dispatch, self._on_settings_saved, self.open_settings)
+
     def _on_settings_saved(self, settings: Settings) -> None:
         self.settings = settings
         self._paused = False
@@ -250,7 +260,9 @@ class App:
             except OSError:
                 log.debug("자동 시작 동기화 실패", exc_info=True)
         self.start_monitor()
-        if self._open_settings_on_start:
+        if self._open_setup_on_start:
+            self.root.after(300, self.open_setup)
+        elif self._open_settings_on_start:
             self.root.after(300, self.open_settings)
         log.info("%s 시작", APP_DISPLAY_NAME)
         try:

@@ -28,3 +28,9 @@ tray/build/pyi/
 tray/build/MailShieldTray.ico
 tray/mailshield_tray/resources/google_client.json
 tray/dist-next/
+tray/dist-onedir/
+tray/build/pyi-onedir/
+tray/dist-nuitka/
+tray/launcher.build/
+tray/launcher.dist/
+tray/launcher.onefile-build/

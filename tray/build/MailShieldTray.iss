@@ -2,7 +2,7 @@
 ; 빌드: tray\build\Build-MailShieldTray.ps1 가 dist\MailShieldTray.exe 생성 후 호출한다.
 
 #define MyAppName "MailShield Tray"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.10"
 #define MyAppPublisher "MailShield"
 #define MyAppExeName "MailShieldTray.exe"
 
@@ -46,7 +46,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "MailShieldTray"; ValueData: """{app}\{#MyAppExeName}"" --autostart"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--settings"; Description: "지금 MailShield Tray 시작(계정 설정 열기)"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--setup"; Description: "지금 MailShield Tray 시작(처음 설정 마법사 열기)"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 ; 실행 중인 인스턴스 종료 후 자격증명·상태·자동 시작 항목 정리
