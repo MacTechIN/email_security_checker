@@ -1,10 +1,15 @@
-; MailShield Tray 설치기 (사용자별 설치, 관리자 권한 불필요)
-; 빌드: tray\build\Build-MailShieldTray.ps1 가 dist\MailShieldTray.exe 생성 후 호출한다.
+; MailShield Tray 설치기 - 폴더형(onedir / Nuitka standalone) 배포용
+; 실행 파일 하나가 아니라 폴더 전체를 설치한다. 프로세스 1개, 임시 폴더 추출 없음.
+; 빌드: ISCC.exe /DSrcDir="C:\ms_build\out\launcher.dist" build\MailShieldTray-dir.iss
+;       (SrcDir을 주지 않으면 ..\dist-onedir\MailShieldTray 를 쓴다)
 
 #define MyAppName "MailShield Tray"
 #define MyAppVersion "0.1.11"
 #define MyAppPublisher "MailShield"
 #define MyAppExeName "MailShieldTray.exe"
+#ifndef SrcDir
+  #define SrcDir "..\dist-onedir\MailShieldTray"
+#endif
 
 [Setup]
 AppId={{7D3E4B1A-5C2F-4E7A-9B61-2F0C8D9E1A22}
@@ -35,21 +40,22 @@ Name: "autostart"; Description: "Windows 로그인 시 자동 실행"; GroupDesc
 Name: "desktopicon"; Description: "바탕 화면 바로 가기 만들기"; GroupDescription: "추가 작업:"; Flags: unchecked
 
 [Files]
-Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SrcDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{#MyAppName} 계정 설정"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--settings"
+Name: "{group}\{#MyAppName} 연결 점검"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--verify --gui"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "MailShieldTray"; ValueData: """{app}\{#MyAppExeName}"" --autostart"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
+; 설치 직후 처음 설정 마법사: 이메일 → 2단계 인증·앱 비밀번호 페이지 안내 → 검사 → 통과 시 저장·감시 시작
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--setup"; Description: "지금 MailShield Tray 시작(처음 설정 마법사 열기)"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
-; 실행 중인 인스턴스 종료 후 자격증명·상태·자동 시작 항목 정리
 Filename: "taskkill.exe"; Parameters: "/IM {#MyAppExeName} /F"; Flags: runhidden waituntilterminated; RunOnceId: "KillTray"
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall-cleanup"; Flags: runhidden waituntilterminated; RunOnceId: "Cleanup"
 
@@ -57,11 +63,6 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall-cleanup"; Flags: run
 Type: filesandordirs; Name: "{localappdata}\MailShield"
 
 [Code]
-function InitializeSetup(): Boolean;
-begin
-  Result := True;
-end;
-
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
