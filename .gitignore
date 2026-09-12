@@ -34,3 +34,11 @@ tray/dist-nuitka/
 tray/launcher.build/
 tray/launcher.dist/
 tray/launcher.onefile-build/
+tray2/dist/
+tray2/dist-next/
+tray2/dist-onedir/
+tray2/dist-nuitka/
+tray2/output/
+tray2/build/pyi/
+tray2/build/pyi-onedir/
+tray2/build/MailShield2Tray.ico

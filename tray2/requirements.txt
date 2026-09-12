@@ -1,0 +1,8 @@
+imapclient>=3.0,<4.0
+google-auth>=2.30,<3.0
+google-auth-oauthlib>=1.2,<2.0
+keyring>=25.0,<26.0
+pystray>=0.19,<1.0
+Pillow>=10.0
+windows-toasts>=1.1; platform_system == "Windows"
+pywin32>=306; platform_system == "Windows"
