@@ -22,6 +22,7 @@ code_snipt/client_secret_*.json
 
 # MailShield Tray: keep build definitions, ignore outputs and embedded OAuth client
 !tray/build/
+!tray2/build/
 tray/dist/
 tray/output/
 tray/build/pyi/
